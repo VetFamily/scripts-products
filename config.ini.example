@@ -1,0 +1,6 @@
+[postgresql]
+drivername=postgres
+host=localhost
+database=ed-produits
+username=elia-digital
+password=
