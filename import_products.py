@@ -28,7 +28,7 @@ def getArguments():
     parser = argparse.ArgumentParser(description='Lancement du traitement du fichier de valorisations Vetapro')
     # parser.add_argument('-o', '--output', help='Output file name', default='stdout')
     optional_args = parser.add_argument_group('optional named arguments')
-    optional_args.add_argument('-s', '--sheet', help='Nom de la feuille Excel')
+    optional_args.add_argument('-s', '--simulate', help='Simulation de l\'integration du fichier', action='store_true')
     return parser.parse_args()
 
 
@@ -176,7 +176,6 @@ def insert_central_codes(df, cent_id, cent_name):
     # Insert into centrale_produit
     df_temp_new_cp = df_temp_new[['produit_id', 'code_produit']]
     df_temp_new_cp.insert(0, 'centrale_id', cent_id)
-    df_temp_new_cp.insert(0, 'date_creation', date)
     df_temp_new_cp.to_sql('centrale_produit', engine, if_exists='append', index=False, chunksize=1000)
     count += len(df_temp_new_cp.index)
 
@@ -190,12 +189,7 @@ def insert_central_codes(df, cent_id, cent_name):
         df_temp_new_cpd.insert(0, 'date_creation', date)
         df_temp_new_cpd.to_sql('centrale_produit_denominations', engine, if_exists='append', index=False, chunksize=1000)
 
-        # Insert into centrale_produit_tarifs
-        df_temp_new_cpt = df_temp_new[['centrale_produit_id', 'prix_unitaire_hors_promo']]
-        df_temp_new_cpt.insert(0, 'date_creation', date)
-        df_temp_new_cpt.to_sql('centrale_produit_tarifs', engine, if_exists='append', index=False, chunksize=1000)
-
-        del df_temp_new_cpd, df_temp_new_cpt
+        del df_temp_new_cpd
 
     count_of_centrals_codes[cent_name] = count
 
@@ -287,12 +281,12 @@ if __name__ == "__main__":
 
     # Getting args
     args = getArguments()
-    sheet_name = args.sheet if args.sheet is not None and args.sheet != "" else 0
+    simulation = args.simulate
 
     initDir = './fichiers/'
     workDir = './encours/'
-    historicDir = './historiques/' + datetime.now().strftime('%Y%m%d') + "/"
-    logDir = './logs/' + datetime.now().strftime('%Y%m%d') + "/"
+    historicDir = './historiques/nouveaux/' + datetime.now().strftime('%Y%m%d') + "/"
+    logDir = './logs/nouveaux/' + datetime.now().strftime('%Y%m%d') + "/"
 
     # Create directories if not exist
     os.makedirs(workDir, exist_ok=True)
@@ -331,7 +325,7 @@ if __name__ == "__main__":
                 count_of_centrals_codes = {"Alcyon": 0, "Centravet": 0, "Coveto": 0, "Alibon": 0, "Vetapro": 0,
                                            "Vetys": 0, "Hippocampe": 0, "Agripharm": 0, "Elvetis": 0, "Longimpex": 0}
                 # Read Excel file
-                df_init = pd.read_excel(workDir + os.path.basename(f), sheet_name=sheet_name)
+                df_init = pd.read_excel(workDir + os.path.basename(f))
                 # Process file
                 process()
             else:

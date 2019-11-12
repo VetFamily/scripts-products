@@ -81,7 +81,7 @@ def process():
             cent_id = 4
         elif cent_name == 'Vetapro':
             cent_id = 5
-        elif cent_name == 'Vetys pharma':
+        elif cent_name == 'Vetys':
             cent_id = 6
         elif cent_name == 'Hippocampe':
             cent_id = 7

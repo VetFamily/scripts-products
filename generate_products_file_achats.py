@@ -81,7 +81,7 @@ def process_file(df_file, cent_name, df_products, df_classes, df):
                    'annee_achat', 'mois_achat', 'designation', 'qte_payante', 'ca_complet']
     elif cent_name == 'Vetapro':
         cent_id = 5
-    elif cent_name == 'Vetys pharma':
+    elif cent_name == 'Vetys':
         cent_id = 6
         nb_of_cols = 11
         columns = ['centrale', 'client_identifiant', 'code_distributeur', 'annee_achat', 'mois_achat', 'code_gtin',
@@ -245,7 +245,7 @@ if __name__ == "__main__":
     # Create directories if not exist
     os.makedirs(logDir, exist_ok=True)
 
-    cents = ['Alcyon', 'Centravet', 'Coveto', 'Alibon', 'Vetapro', 'Vetys pharma', 'Hippocampe', 'Agripharm', 'Elvetis',
+    cents = ['Alcyon', 'Centravet', 'Coveto', 'Alibon', 'Vetapro', 'Vetys', 'Hippocampe', 'Agripharm', 'Elvetis',
              'Longimpex']
 
     print(f'** Generate file of new products of purchases **')
