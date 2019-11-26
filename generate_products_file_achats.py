@@ -119,6 +119,8 @@ def process_file(df_file, cent_name, df_products, df_classes, df):
          'client_livre_identifiant', 'client_livre_nom', 'classe_1', 'classe_2', 'classe_3'], axis=1, inplace=True,
         errors='ignore')
     df_file = df_file.drop_duplicates(subset=['code_distributeur', 'designation', 'laboratoire', 'code_gtin'])
+    df_file['code_gtin'] = df_file['code_gtin'].dropna().apply(lambda x: str(x).replace(',', '.'))
+    df_file['code_gtin'] = pd.to_numeric(df_file['code_gtin'].replace(',', '.'))
 
     temp = pd.merge(df_file[pd.notnull(df_file['code_gtin'])], df_products, on='code_gtin', how='left')
     df_temp = pd.concat([temp, df_file[pd.isnull(df_file['code_gtin'])]], axis=0, sort=False, ignore_index=True)

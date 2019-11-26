@@ -74,15 +74,18 @@ def insert_types(df):
 
     df_temp = df_temp.loc[df_temp['Types'].notnull(), :]
 
-    df_types = pd.DataFrame(df_temp['Types'].str.split('|').tolist(), index=df_temp['produit_id']).stack()
-    df_types = df_types.reset_index()[[0, 'produit_id']]
-    df_types.columns = ['type_id', 'produit_id']
-    df_types = df_types.replace(
-        {'type_id': {"Aliment": 1, "Médicament": 2, "Antibiotique": 3, "Divers": 4, "Matériel": 5}})
-    df_types.to_sql('produit_type', engine, if_exists='append', index=False, chunksize=1000)
-    count_of_types = len(df_types.index)
+    if len(df_temp.index) > 0:
+        df_types = pd.DataFrame(df_temp['Types'].str.split('|').tolist(), index=df_temp['produit_id']).stack()
+        df_types = df_types.reset_index()[[0, 'produit_id']]
+        df_types.columns = ['type_id', 'produit_id']
+        df_types = df_types.replace(
+            {'type_id': {"Aliment": 1, "Médicament": 2, "Antibiotique": 3, "Divers": 4, "Matériel": 5}})
+        df_types.to_sql('produit_type', engine, if_exists='append', index=False, chunksize=1000)
+        count_of_types = len(df_types.index)
 
-    del df_temp, df_types
+        del df_types
+
+    del df_temp
 
 
 def update_product(df):
@@ -127,15 +130,18 @@ def insert_species(df):
 
     df_temp = df_temp.loc[df_temp['Espèces'].notnull(), :]
 
-    df_species = pd.DataFrame(df_temp['Espèces'].str.split('|').tolist(), index=df_temp['produit_id']).stack()
-    df_species = df_species.reset_index()[[0, 'produit_id']]
-    df_species.columns = ['espece_id', 'produit_id']
-    df_species = df_species.replace(
-        {'espece_id': {"Canine": 1, "Equine":2, "Rurale": 3, "Porc": 4, "Volaille": 5, "Autres": 6}})
-    df_species.to_sql('espece_produit', engine, if_exists='append', index=False, chunksize=1000)
-    count_of_species = len(df_species.index)
+    if len(df_temp.index) > 0:
+        df_species = pd.DataFrame(df_temp['Espèces'].str.split('|').tolist(), index=df_temp['produit_id']).stack()
+        df_species = df_species.reset_index()[[0, 'produit_id']]
+        df_species.columns = ['espece_id', 'produit_id']
+        df_species = df_species.replace(
+            {'espece_id': {"Canine": 1, "Equine":2, "Rurale": 3, "Porc": 4, "Volaille": 5, "Autres": 6}})
+        df_species.to_sql('espece_produit', engine, if_exists='append', index=False, chunksize=1000)
+        count_of_species = len(df_species.index)
 
-    del df_temp, df_species
+        del df_species
+
+    del df_temp
 
 
 def insert_central_codes(df, cent_id, cent_name):
@@ -223,6 +229,9 @@ def process():
     df = pd.concat([temp, df[pd.notnull(df['Id'])]], axis=0, sort=False, ignore_index=True)
     df.loc[df['produit_id'].isnull(), 'produit_id'] = df['Id']
     df['produit_id'] = pd.to_numeric(df['produit_id'])
+
+    # Add Vetapro codes
+    df.loc[(df['Id'].isnull() & df['Code_Vetapro'].isnull()), 'Code_Vetapro'] = df['produit_id']
 
     # Insert types of new products
     insert_types(df)
