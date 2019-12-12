@@ -68,6 +68,11 @@ def process_file(df_file, cent_name, df_products, df_classes, df):
                    'qte_ug', 'ca_complet', 'classe_therapeutique']
     elif cent_name == 'Centravet':
         cent_id = 2
+        nb_of_cols = 20
+        columns = ['centrale', 'client_livre_nom', 'client_nom', 'code_distributeur', 'code_cip', 'code_gtin',
+                   'designation', 'laboratoire', 'classe_1', 'classe_2', 'classe_3', 'mois_achat', 'annee_achat',
+                   'ca_complet', 'qte_payante', 'qte_ug', 'client_identifiant', 'categorie_1', 'categorie_2',
+                   'categorie_3']
     elif cent_name == 'Coveto':
         cent_id = 3
         nb_of_cols = 14
@@ -111,12 +116,21 @@ def process_file(df_file, cent_name, df_products, df_classes, df):
 
     df_file = df_file.iloc[:, 0:nb_of_cols]
     df_file.columns = columns
+
     if cent_id != 6:
+        if cent_id in [2, 7]:
+            df_file['classe_therapeutique'] = df_file['classe_1'] + ' / ' + df_file['classe_2'] + ' / ' + df_file[
+                'classe_3']
+
+        if cent_id == 2:
+            df_file['qte_payante'] = df_file['qte_payante'] = df_file['qte_ug']
         df_file['prix_unitaire'] = df_file['ca_complet'] / df_file['qte_payante']
+
     df_file.drop(
         ['centrale', 'client_identifiant', 'client_nom', 'taux_tva', 'code_cip', 'annee_achat', 'mois_achat',
          'date_achat', 'qte_payante', 'qte_ug', 'qte_ug_vide', 'ca_complet', 'num_facture',
-         'client_livre_identifiant', 'client_livre_nom', 'classe_1', 'classe_2', 'classe_3'], axis=1, inplace=True,
+         'client_livre_identifiant', 'client_livre_nom', 'classe_1', 'classe_2', 'classe_3', 'categorie_1',
+         'categorie_2', 'categorie_3'], axis=1, inplace=True,
         errors='ignore')
     df_file = df_file.drop_duplicates(subset=['code_distributeur', 'designation', 'laboratoire', 'code_gtin'])
     df_file['code_gtin'] = df_file['code_gtin'].dropna().apply(lambda x: str(x).replace(',', '.'))
@@ -244,6 +258,7 @@ if __name__ == "__main__":
     date = args.date
 
     logDir = '/home/ftpusers/amadeo/script-achats/elia-digital/' + date + "/"
+
     # Create directories if not exist
     os.makedirs(logDir, exist_ok=True)
 

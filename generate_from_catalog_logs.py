@@ -87,6 +87,8 @@ def process():
             cent_id = 7
         elif cent_name == 'Agripharm':
             cent_id = 8
+            for x in range(len(df_file.columns), 25):
+                df_file.insert(x, 'empty', np.nan)
         elif cent_name == 'Elvetis':
             cent_id = 9
         elif cent_name == 'Longimpex':
@@ -99,14 +101,17 @@ def process():
                            'prix_unitaire_hors_promo', 'prix_unitaire_promo', 'date_debut_promo', 'date_fin_promo',
                            'quantite_ug', 'code_cip']
 
+        df_file['code_gtin'] = df_file['code_gtin'].dropna().apply(lambda x: str(x).replace(',', '.'))
+        df_file['code_gtin'] = pd.to_numeric(df_file['code_gtin'].replace(',', '.'))
+
         temp = pd.merge(df_file[pd.notnull(df_file['code_gtin'])], df_products, on='code_gtin', how='left')
         df_temp = pd.concat([temp, df_file[pd.isnull(df_file['code_gtin'])]], axis=0, sort=False, ignore_index=True)
         del temp
 
         df_temp.drop(
             ['agrement', 'poids_unitaire', 'sous_unite_revente', 'gestion_stock', 'taux_tva', 'quantite_tarif',
-             'prix_unitaire_hors_promo', 'prix_unitaire_promo', 'date_debut_promo', 'date_fin_promo', 'quantite_ug',
-             'code_cip'], axis=1, inplace=True)
+             'prix_unitaire_promo', 'date_debut_promo', 'date_fin_promo', 'quantite_ug', 'code_cip'], axis=1,
+            inplace=True, errors='ignore')
         df_temp['denomination'] = df_temp['designation']
         df_temp['obsolete'] = df_temp['obsolete_temp']
         df_temp['invisible'] = df_temp['invisible_temp']
@@ -130,7 +135,8 @@ def process():
                 str(df_temp['sous_famille']) == 'ATB'), 'categorie'] = 'Antibiotique'
 
         # Therapeutic classes
-        df_temp['famille_therapeutique'] = df_temp['classe_therapeutique'].str.replace(' ', '').str[:4]
+        df_temp['famille_therapeutique'] = df_temp['classe_therapeutique'].dropna().apply(
+            lambda x: str(x).replace(' ', '')[:4])
         temp = pd.merge(df_temp[pd.notnull(df_temp['famille_therapeutique'])], df_classes,
                         on=['famille_therapeutique'], how='left')
         df_temp = pd.concat([temp, df_temp[pd.isnull(df_temp['famille_therapeutique'])]], axis=0, sort=False,
@@ -150,10 +156,10 @@ def process():
 
         df = pd.concat([df, df_temp.drop_duplicates()], axis=0, sort=False, ignore_index=True)
 
-        # Sort dataframe
-        df = df.sort_values(by=['Laboratoire', 'Code GTIN'])
+    # Sort dataframe
+    df = df.sort_values(by=['Laboratoire', 'Code GTIN'])
 
-        return df
+    return df
 
 
 def create_excel_file(filename, df, append):

@@ -292,8 +292,8 @@ if __name__ == "__main__":
     args = getArguments()
     simulation = args.simulate
 
-    initDir = './fichiers/'
-    workDir = './encours/'
+    initDir = './fichiers/nouveaux/'
+    workDir = './encours/nouveaux/'
     historicDir = './historiques/nouveaux/' + datetime.now().strftime('%Y%m%d') + "/"
     logDir = './logs/nouveaux/' + datetime.now().strftime('%Y%m%d') + "/"
 
