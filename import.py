@@ -79,7 +79,7 @@ def insert_types(df):
         df_types = df_types.reset_index()[[0, 'produit_id']]
         df_types.columns = ['type_id', 'produit_id']
         df_types = df_types.replace(
-            {'type_id': {"Aliment": 1, "Médicament": 2, "Antibiotique": 3, "Divers": 4, "Matériel": 5}})
+            {'type_id': {"Aliment": 1, "Antibiotique": 2, "Divers": 3, "Matériel": 4, "Médicament": 5}})
         df_types.to_sql('produit_type', engine, if_exists='append', index=False, chunksize=1000)
         count_of_types = len(df_types.index)
 
@@ -208,11 +208,9 @@ def process():
     df['Invisible'] = df['Invisible'].astype(bool)
     df['Id'] = pd.to_numeric(df['Id'])
     df['Code GTIN'] = df['Code GTIN'].dropna().apply(lambda x: str(int(x)))
+    df['Autre code GTIN'] = df['Autre code GTIN'].dropna().apply(lambda x: str(int(x)))
     df['Dénomination'] = df['Dénomination'].dropna().apply(lambda x: str(x))
     df['Conditionnement'] = df['Conditionnement'].dropna().apply(lambda x: str(x))
-    for col in df.columns:
-        if 'Code_' in col:
-            df[col] = df[col].dropna().apply(lambda x: str(int(x)) if type(x) is float else x)
 
     # Insert new products
     insert_new_product(df)
@@ -232,6 +230,11 @@ def process():
 
     # Add Vetapro codes
     df.loc[(df['Id'].isnull() & df['Code_Vetapro'].isnull()), 'Code_Vetapro'] = df['produit_id']
+
+    # Remove .0 from codes columns
+    for col in df.columns:
+        if 'Code_' in col:
+            df[col] = df[col].dropna().apply(lambda x: str(int(x)) if type(x) is float else x)
 
     # Insert types of new products
     insert_types(df)
