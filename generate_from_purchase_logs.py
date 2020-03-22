@@ -31,7 +31,8 @@ def getArguments():
 def aggregate_files():
     print('Aggregating files...')
 
-    clients = ['bourgelat', 'vetoavenir', 'vetapro', 'vetapharma', 'vetharmonie', 'cristal', 'symbioveto', 'clubvet']
+    clients = ['bourgelat', 'vetoavenir', 'vetapro', 'vetapharma', 'vetharmonie', 'cristal', 'symbioveto', 'clubvet',
+               'vetodistribution']
 
     # Aggregate laboratories files
     df_labs = pd.DataFrame([])
@@ -113,6 +114,21 @@ def process_file(df_file, cent_name, df_products, df_classes, df):
         nb_of_cols = 11
         columns = ['centrale', 'client_identifiant', 'client_nom', 'laboratoire', 'code_distributeur',
                    'designation', 'code_gtin', 'annee_achat', 'mois_achat', 'qte_payante', 'ca_complet']
+    elif cent_name == 'Direct_Biové':
+        cent_id = 11
+        nb_of_cols = 36
+        columns = ['centrale', 'date_achat', 'mois_achat', 'annee_achat', 'client_identifiant', 'client_nom',
+                   'a_supprimer', 'code_cip', 'designation', 'qte_payante', 'ca_complet', 'a_supprimer', 'code_gtin',
+                   'a_supprimer', 'num_facture', 'a_supprimer', 'client_ville', 'a_supprimer', 'a_supprimer',
+                   'a_supprimer', 'client_adresse', 'client_adresse', 'a_supprimer', 'a_supprimer', 'a_supprimer',
+                   'a_supprimer', 'a_supprimer', 'a_supprimer', 'laboratoire', 'a_supprimer', 'a_supprimer',
+                   'a_supprimer', 'classe_1', 'classe_2', 'a_supprimer', 'code_distributeur']
+    elif cent_name == 'Cedivet':
+        cent_id = 12
+        nb_of_cols = 13
+        columns = ['centrale', 'annee_achat', 'mois_achat', 'laboratoire', 'code_gtin', 'client_identifiant',
+                   'client_nom', 'client_adresse', 'client_ville', 'code_distributeur', 'designation', 'qte_payante',
+                   'ca_complet']
 
     df_file = df_file.iloc[:, 0:nb_of_cols]
     df_file.columns = columns
@@ -130,7 +146,7 @@ def process_file(df_file, cent_name, df_products, df_classes, df):
         ['centrale', 'client_identifiant', 'client_nom', 'taux_tva', 'code_cip', 'annee_achat', 'mois_achat',
          'date_achat', 'qte_payante', 'qte_ug', 'qte_ug_vide', 'ca_complet', 'num_facture',
          'client_livre_identifiant', 'client_livre_nom', 'classe_1', 'classe_2', 'classe_3', 'categorie_1',
-         'categorie_2', 'categorie_3'], axis=1, inplace=True,
+         'categorie_2', 'categorie_3', 'client_adresse', 'client_ville', 'a_supprimer'], axis=1, inplace=True,
         errors='ignore')
     df_file = df_file.drop_duplicates(subset=['code_distributeur', 'designation', 'laboratoire', 'code_gtin'])
     df_file['code_gtin'] = df_file['code_gtin'].dropna().apply(lambda x: str(x).replace(',', '.'))
@@ -203,7 +219,9 @@ def process():
                                'Code_Hippocampe', 'Dénomination_Hippocampe', 'Tarif_Hippocampe',
                                'Code_Agripharm', 'Dénomination_Agripharm', 'Tarif_Agripharm',
                                'Code_Elvetis', 'Dénomination_Elvetis', 'Tarif_Elvetis',
-                               'Code_Longimpex', 'Dénomination_Longimpex', 'Tarif_Longimpex'])
+                               'Code_Longimpex', 'Dénomination_Longimpex', 'Tarif_Longimpex',
+                               'Code_Direct_Biové', 'Dénomination_Direct_Biové', 'Tarif_Direct_Biové',
+                               'Code_Cedivet', 'Dénomination_Cedivet', 'Tarif_Cedivet'])
 
     if os.path.isfile(logDir + date[0:6] + "_Nouveaux produits_achats.xlsx"):
         os.remove(logDir + date[0:6] + "_Nouveaux produits_achats.xlsx")
@@ -263,7 +281,7 @@ if __name__ == "__main__":
     os.makedirs(logDir, exist_ok=True)
 
     cents = ['Alcyon', 'Centravet', 'Coveto', 'Alibon', 'Vetapro', 'Vetys', 'Hippocampe', 'Agripharm', 'Elvetis',
-             'Longimpex']
+             'Longimpex', 'Direct_5_Biové', 'Cedivet']
 
     print(f'** Generate file of new products of purchases **')
 

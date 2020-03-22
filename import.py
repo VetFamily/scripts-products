@@ -275,6 +275,12 @@ def process():
     # Insert Longimpex codes
     insert_central_codes(df, 10, 'Longimpex')
 
+    # Insert Direct Biové codes
+    insert_central_codes(df, 11, 'Direct_5_Biové')
+
+    # Insert Cedivet codes
+    insert_central_codes(df, 12, 'Cedivet')
+
 
 def create_excel_file(filename, df, append):
     if append:
@@ -335,7 +341,8 @@ if __name__ == "__main__":
                 count_of_species = 0
                 count_of_upd_products = 0
                 count_of_centrals_codes = {"Alcyon": 0, "Centravet": 0, "Coveto": 0, "Alibon": 0, "Vetapro": 0,
-                                           "Vetys": 0, "Hippocampe": 0, "Agripharm": 0, "Elvetis": 0, "Longimpex": 0}
+                                           "Vetys": 0, "Hippocampe": 0, "Agripharm": 0, "Elvetis": 0, "Longimpex": 0,
+                                           "Direct_5_Biové": 0, "Cedivet": 0}
                 # Read Excel file
                 df_init = pd.read_excel(workDir + os.path.basename(f))
                 # Process file
