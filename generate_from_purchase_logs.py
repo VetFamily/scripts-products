@@ -44,7 +44,8 @@ def aggregate_files():
 
     if os.path.isfile(logDir + 'unknown_laboratories.xlsx'):
         os.remove(logDir + 'unknown_laboratories.xlsx')
-    create_excel_file(logDir + 'unknown_laboratories.xlsx', df_labs.drop_duplicates(), False)
+    if len(df_labs.index) > 0:
+        create_excel_file(logDir + 'unknown_laboratories.xlsx', df_labs.drop_duplicates(), False)
 
     # Aggregate products files
     for cent in cents:
@@ -57,7 +58,8 @@ def aggregate_files():
 
         if os.path.isfile(logDir + 'unknown_products_' + cent + '.xlsx'):
             os.remove(logDir + 'unknown_products_' + cent + '.xlsx')
-        create_excel_file(logDir + 'unknown_products_' + cent + '.xlsx', df_cent, False)
+        if len(df_cent.index) > 0:
+            create_excel_file(logDir + 'unknown_products_' + cent + '.xlsx', df_cent, False)
 
 
 def process_file(df_file, cent_name, df_products, df_classes, df):
@@ -114,7 +116,7 @@ def process_file(df_file, cent_name, df_products, df_classes, df):
         nb_of_cols = 11
         columns = ['centrale', 'client_identifiant', 'client_nom', 'laboratoire', 'code_distributeur',
                    'designation', 'code_gtin', 'annee_achat', 'mois_achat', 'qte_payante', 'ca_complet']
-    elif cent_name == 'Direct_Biové':
+    elif cent_name == 'Direct-5-Biové':
         cent_id = 11
         nb_of_cols = 36
         columns = ['centrale', 'date_achat', 'mois_achat', 'annee_achat', 'client_identifiant', 'client_nom',
@@ -220,7 +222,7 @@ def process():
                                'Code_Agripharm', 'Dénomination_Agripharm', 'Tarif_Agripharm',
                                'Code_Elvetis', 'Dénomination_Elvetis', 'Tarif_Elvetis',
                                'Code_Longimpex', 'Dénomination_Longimpex', 'Tarif_Longimpex',
-                               'Code_Direct_Biové', 'Dénomination_Direct_Biové', 'Tarif_Direct_Biové',
+                               'Code_Direct-5-Biové', 'Dénomination_Direct-5-Biové', 'Tarif_Direct-5-Biové',
                                'Code_Cedivet', 'Dénomination_Cedivet', 'Tarif_Cedivet'])
 
     if os.path.isfile(logDir + date[0:6] + "_Nouveaux produits_achats.xlsx"):
@@ -281,7 +283,7 @@ if __name__ == "__main__":
     os.makedirs(logDir, exist_ok=True)
 
     cents = ['Alcyon', 'Centravet', 'Coveto', 'Alibon', 'Vetapro', 'Vetys', 'Hippocampe', 'Agripharm', 'Elvetis',
-             'Longimpex', 'Direct_5_Biové', 'Cedivet']
+             'Longimpex', 'Direct-5-Biové', 'Cedivet']
 
     print(f'** Generate file of new products of purchases **')
 
