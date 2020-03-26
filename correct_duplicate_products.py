@@ -26,7 +26,7 @@ def process():
     global df_logs
 
     clients = {"bourgelat": 0, "vetoavenir": 0, "vetapro": 0, "vetapharma": 0, "vetharmonie": 0, "cristal": 0,
-               "symbioveto": 0, "clubvet": 0}
+               "symbioveto": 0, "clubvet": 0, "vetodistribution": 0}
 
     # Read Excel file
     df = pd.read_excel(workDir + os.path.basename(f))
@@ -109,7 +109,8 @@ def process():
                  'produit_id_nouveau': new_product, 'commentaire': 'OK', 'bourgelat': clients['bourgelat'],
                  'vetoavenir': clients['vetoavenir'], 'vetapro': clients['vetapro'],
                  'vetapharma': clients['vetapharma'], 'vetharmonie': clients['vetharmonie'],
-                 'cristal': clients['cristal'], 'symbioveto': clients['symbioveto'], 'clubvet': clients['clubvet']},
+                 'cristal': clients['cristal'], 'symbioveto': clients['symbioveto'], 'clubvet': clients['clubvet'],
+                 'vetodistribution': clients['vetodistribution']},
                 ignore_index=True)
 
 
@@ -149,7 +150,7 @@ if __name__ == "__main__":
         # Create empty logs dataframes
         df_logs = pd.DataFrame(columns=['centrale_id', 'code_produit', 'produit_id_ancien', 'produit_id_nouveau',
                                         'commentaire', 'bourgelat', 'vetoavenir', 'vetapro', 'vetapharma',
-                                        'vetharmonie', 'cristal', 'symbioveto', 'clubvet'])
+                                        'vetharmonie', 'cristal', 'symbioveto', 'clubvet', 'vetodistribution'])
 
         for f in glob.glob(r'' + initDir + '/*.[xX][lL][sS][xX]'):
             print(f'Processing file "{os.path.basename(f)}" ...')
