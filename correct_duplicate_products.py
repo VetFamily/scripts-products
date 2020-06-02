@@ -93,6 +93,8 @@ def process():
                         res = connection_client.execute(upd_purchases, prodId=new_product,
                                                         ids=(tuple(list_of_purchases)))
                         clients[i] = res.rowcount
+                    else:
+                        clients[i] = 0
 
                 except (Exception, psycopg2.Error) as error_client:
                     if connection_client:

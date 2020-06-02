@@ -4,308 +4,299 @@
 
 
 import argparse
-import numpy as np
-from openpyxl import load_workbook
-from openpyxl import Workbook
-from openpyxl.utils.dataframe import dataframe_to_rows
-import os
-import pandas as pd
-from pathlib import Path
-import psycopg2
 import glob
+import logging
+import os
+import shutil
+from datetime import datetime
+
+import numpy as np
+import pandas as pd
+import psycopg2
+import xlsxwriter
 from sqlalchemy import create_engine
 from sqlalchemy.engine.url import URL
 from sqlalchemy.sql import text
 
 from config import config
+from src.common import constant, common
 
 
-def getArguments():
+def get_arguments():
     parser = argparse.ArgumentParser(description='Generation du fichier des nouveaux produits')
     # parser.add_argument('-o', '--output', help='Output file name', default='stdout')
     required_args = parser.add_argument_group('required named arguments')
-    required_args.add_argument('-d', '--date', help='Dossier contenant les fichiers de logs', required=True)
+    required_args.add_argument('-c', '--country', help='ID of country', required=True)
+    optional_args = parser.add_argument_group('optional named arguments')
+    optional_args.add_argument('-d', '--debug', help='Logging debug in console', action='store_true')
     return parser.parse_args()
 
 
-def aggregate_files():
-    print('Aggregating files...')
+def process_products():
+    logging.info(f"** Generate new products of purchases for country '{country_name}' start **")
 
-    clients = ['bourgelat', 'vetoavenir', 'vetapro', 'vetapharma', 'vetharmonie', 'cristal', 'symbioveto', 'clubvet',
-               'vetodistribution']
+    products_dir = root_dir + constant.DIR_PRODUCTS + "/" + country_name + "/"
+    products_new_dir = products_dir + constant.DIR_NEW + '/'
+    products_out_dir = products_dir + constant.DIR_ARCHIVES + '/' + now + "/"
+    products_out_files_dir = products_out_dir + constant.DIR_FILES + "/"
 
-    # Aggregate laboratories files
-    df_labs = pd.DataFrame([])
-    for client in clients:
-        dir_client = '/home/ftpusers/amadeo/script-achats/' + client + '/' + date + '/'
+    file_exist = False
+    for root, dirs, files_list in os.walk(products_new_dir):
+        if files_list:
+            file_exist = True
+            break
 
-        for f in sorted(glob.glob(r'' + dir_client + 'unknown_laboratories*.xlsx')):
-            df_labs = pd.concat([df_labs, pd.read_excel(f, header=None)], axis=0, sort=False, ignore_index=True)
+    if file_exist:
+        # Create directories if not exist
+        os.makedirs(products_out_files_dir, exist_ok=True)
 
-    if os.path.isfile(logDir + 'unknown_laboratories.xlsx'):
-        os.remove(logDir + 'unknown_laboratories.xlsx')
-    if len(df_labs.index) > 0:
-        create_excel_file(logDir + 'unknown_laboratories.xlsx', df_labs.drop_duplicates(), False)
+        for f in sorted(glob.glob(r'' + products_new_dir + '*.*')):
+            filename = os.path.basename(f)
+            logging.debug(f'** Move "{filename}" to backup files directory **')
+            shutil.move(f, products_out_files_dir + filename)
 
-    # Aggregate products files
-    for cent in cents:
-        df_cent = pd.DataFrame([])
-        for client in clients:
-            dir_client = '/home/ftpusers/amadeo/script-achats/' + client + '/' + date + '/'
+        # Initialize dataframe of products
+        df = pd.DataFrame([])
 
-            for f in sorted(glob.glob(r'' + dir_client + 'unknown_products_' + cent + '*.xlsx')):
-                df_cent = pd.concat([df_cent, pd.read_excel(f, header=None)], axis=0, sort=False, ignore_index=True)
+        logging.debug(f'Aggregate files...')
+        for f in sorted(glob.glob(r'' + products_out_files_dir + '*.*')):
+            df = pd.concat([df, pd.read_excel(f)], axis=0, sort=False, ignore_index=True)
 
-        if os.path.isfile(logDir + 'unknown_products_' + cent + '.xlsx'):
-            os.remove(logDir + 'unknown_products_' + cent + '.xlsx')
-        if len(df_cent.index) > 0:
-            create_excel_file(logDir + 'unknown_products_' + cent + '.xlsx', df_cent, False)
+        # Save dataframe for logs
+        writer = pd.ExcelWriter(
+            products_out_dir + now + "_unknown_products_aggregated.xlsx",
+            engine='xlsxwriter')
+        df.to_excel(writer, index=False)
+        writer.save()
 
+        df.drop_duplicates(inplace=True)
 
-def process_file(df_file, cent_name, df_products, df_classes, df):
-    if cent_name == 'Alcyon':
-        cent_id = 1
-        nb_of_cols = 14
-        columns = ['centrale', 'client_identifiant', 'client_nom', 'laboratoire', 'code_distributeur',
-                   'designation', 'taux_tva', 'code_cip', 'code_gtin', 'date_achat', 'qte_payante',
-                   'qte_ug', 'ca_complet', 'classe_therapeutique']
-    elif cent_name == 'Centravet':
-        cent_id = 2
-        nb_of_cols = 20
-        columns = ['centrale', 'client_livre_nom', 'client_nom', 'code_distributeur', 'code_cip', 'code_gtin',
-                   'designation', 'laboratoire', 'classe_1', 'classe_2', 'classe_3', 'mois_achat', 'annee_achat',
-                   'ca_complet', 'qte_payante', 'qte_ug', 'client_identifiant', 'categorie_1', 'categorie_2',
-                   'categorie_3']
-    elif cent_name == 'Coveto':
-        cent_id = 3
-        nb_of_cols = 14
-        columns = ['centrale', 'client_identifiant', 'client_nom', 'laboratoire', 'code_distributeur',
-                   'designation', 'taux_tva', 'code_cip', 'code_gtin', 'date_achat', 'qte_payante',
-                   'qte_ug_vide', 'ca_complet', 'qte_ug']
-    elif cent_name == 'Alibon':
-        cent_id = 4
-        nb_of_cols = 11
-        columns = ['centrale', 'client_identifiant', 'client_nom', 'code_distributeur', 'code_gtin', 'laboratoire',
-                   'annee_achat', 'mois_achat', 'designation', 'qte_payante', 'ca_complet']
-    elif cent_name == 'Vetapro':
-        cent_id = 5
-    elif cent_name == 'Vetys':
-        cent_id = 6
-        nb_of_cols = 11
-        columns = ['centrale', 'client_identifiant', 'code_distributeur', 'annee_achat', 'mois_achat', 'code_gtin',
-                   'designation', 'qte_payante', 'laboratoire', 'prix_unitaire', 'ca_complet']
-    elif cent_name == 'Hippocampe':
-        cent_id = 7
-        nb_of_cols = 15
-        columns = ['centrale', 'client_identifiant', 'client_nom', 'code_distributeur', 'code_cip', 'code_gtin',
-                   'designation', 'laboratoire', 'classe_1', 'classe_2', 'classe_3', 'mois_achat',
-                   'annee_achat', 'ca_complet', 'qte_payante']
-    elif cent_name == 'Agripharm':
-        cent_id = 8
-        nb_of_cols = 17
-        columns = ['centrale', 'client_identifiant', 'client_nom', 'code_distributeur', 'designation',
-                   'laboratoire', 'code_gtin', 'code_cip', 'annee_achat', 'mois_achat', 'date_achat', 'qte_payante',
-                   'qte_ug', 'ca_complet', 'num_facture', 'client_livre_identifiant', 'client_livre_nom']
-    elif cent_name == 'Elvetis':
-        cent_id = 9
-        nb_of_cols = 11
-        columns = ['centrale', 'client_identifiant', 'client_nom', 'laboratoire', 'code_distributeur',
-                   'designation', 'code_gtin', 'annee_achat', 'mois_achat', 'qte_payante', 'ca_complet']
-    elif cent_name == 'Longimpex':
-        cent_id = 10
-        nb_of_cols = 11
-        columns = ['centrale', 'client_identifiant', 'client_nom', 'laboratoire', 'code_distributeur',
-                   'designation', 'code_gtin', 'annee_achat', 'mois_achat', 'qte_payante', 'ca_complet']
-    elif cent_name == 'Direct-5-Biové':
-        cent_id = 11
-        nb_of_cols = 36
-        columns = ['centrale', 'date_achat', 'mois_achat', 'annee_achat', 'client_identifiant', 'client_nom',
-                   'a_supprimer', 'code_cip', 'designation', 'qte_payante', 'ca_complet', 'a_supprimer', 'code_gtin',
-                   'a_supprimer', 'num_facture', 'a_supprimer', 'client_ville', 'a_supprimer', 'a_supprimer',
-                   'a_supprimer', 'client_adresse', 'client_adresse', 'a_supprimer', 'a_supprimer', 'a_supprimer',
-                   'a_supprimer', 'a_supprimer', 'a_supprimer', 'laboratoire', 'a_supprimer', 'a_supprimer',
-                   'a_supprimer', 'classe_1', 'classe_2', 'a_supprimer', 'code_distributeur']
-    elif cent_name == 'Cedivet':
-        cent_id = 12
-        nb_of_cols = 13
-        columns = ['centrale', 'annee_achat', 'mois_achat', 'laboratoire', 'code_gtin', 'client_identifiant',
-                   'client_nom', 'client_adresse', 'client_ville', 'code_distributeur', 'designation', 'qte_payante',
-                   'ca_complet']
+        df_final = pd.DataFrame(columns=['Id', 'Dénomination_temp', 'Conditionnement_temp', 'Laboratoire_temp',
+                                         'Obsolète_temp', 'Invisible_temp', 'ID classe thérapeutique_temp', 'Code GTIN',
+                                         'Autre code GTIN', 'ID classe thérapeutique', 'Dénomination',
+                                         'Conditionnement', 'Laboratoire', 'Obsolète', 'Invisible', 'Types', 'Espèces',
+                                         'Code_Alcyon', 'Dénomination_Alcyon', 'Tarif_Alcyon',
+                                         'Code_Centravet', 'Dénomination_Centravet', 'Tarif_Centravet',
+                                         'Code_Coveto', 'Dénomination_Coveto', 'Tarif_Coveto',
+                                         'Code_Alibon', 'Dénomination_Alibon', 'Tarif_Alibon',
+                                         'Code_Vetapro', 'Dénomination_Vetapro', 'Tarif_Vetapro',
+                                         'Code_Vetys', 'Dénomination_Vetys', 'Tarif_Vetys',
+                                         'Code_Hippocampe', 'Dénomination_Hippocampe', 'Tarif_Hippocampe',
+                                         'Code_Agripharm', 'Dénomination_Agripharm', 'Tarif_Agripharm',
+                                         'Code_Elvetis', 'Dénomination_Elvetis', 'Tarif_Elvetis',
+                                         'Code_Longimpex', 'Dénomination_Longimpex', 'Tarif_Longimpex',
+                                         'Code_Direct', 'Dénomination_Direct', 'Tarif_Direct',
+                                         'Code_Cedivet', 'Dénomination_Cedivet', 'Tarif_Cedivet',
+                                         'Code_Covetrus', 'Dénomination_Covetrus', 'Tarif_Covetrus'])
 
-    df_file = df_file.iloc[:, 0:nb_of_cols]
-    df_file.columns = columns
+        # Search existing products in database
+        query_products = text("""
+            select p.id as produit_id, p.denomination as denomination_temp, p.conditionnement as conditionnement_temp, 
+                p.laboratoire_id as laboratoire_id_temp, p.obsolete as obsolete_temp, p.invisible as invisible_temp, 
+                p.famille_therapeutique_id as famille_therapeutique_id_temp, p.code_gtin
+            from produits p
+            join country c on c.id = :countryId
+            where p.code_gtin is not null""")
+        df_products = pd.read_sql_query(query_products, connection, params={"countryId": country_id})
+        df_products['code_gtin'] = pd.to_numeric(df_products['code_gtin'])
 
-    if cent_id != 6:
-        if cent_id in [2, 7]:
-            df_file['classe_therapeutique'] = df_file['classe_1'] + ' / ' + df_file['classe_2'] + ' / ' + df_file[
-                'classe_3']
+        # Search existing codes sources of products in database
+        query_product_sources = text("""
+            select id as centrale_produit_id, code_produit, centrale_id
+            from centrale_produit
+            where country_id = :countryId
+            and produit_id is not null""")
+        df_product_sources = pd.read_sql_query(query_product_sources, connection, params={"countryId": country_id})
 
-        if cent_id == 2:
-            df_file['qte_payante'] = df_file['qte_payante'] = df_file['qte_ug']
-        df_file['prix_unitaire'] = df_file['ca_complet'] / df_file['qte_payante']
+        # Search existing therapeutic classes in database
+        query_classes = text("""
+            select id as famille_therapeutique_id, CONCAT(classe1_code, coalesce(classe2_code, ''), 
+                coalesce(classe3_code, '')) as famille_therapeutique
+            from familles_therapeutiques""")
+        df_classes = pd.read_sql_query(query_classes, connection)
 
-    df_file.drop(
-        ['centrale', 'client_identifiant', 'client_nom', 'taux_tva', 'code_cip', 'annee_achat', 'mois_achat',
-         'date_achat', 'qte_payante', 'qte_ug', 'qte_ug_vide', 'ca_complet', 'num_facture',
-         'client_livre_identifiant', 'client_livre_nom', 'classe_1', 'classe_2', 'classe_3', 'categorie_1',
-         'categorie_2', 'categorie_3', 'client_adresse', 'client_ville', 'a_supprimer'], axis=1, inplace=True,
-        errors='ignore')
-    df_file = df_file.drop_duplicates(subset=['code_distributeur', 'designation', 'laboratoire', 'code_gtin'])
-    df_file['code_gtin'] = df_file['code_gtin'].dropna().apply(lambda x: str(x).replace(',', '.'))
-    df_file['code_gtin'] = pd.to_numeric(df_file['code_gtin'].replace(',', '.'))
+        for source_id, df_group in df.groupby(['source_id']):
+            source_name = common.get_name_of_source(source_id, None).capitalize()
 
-    temp = pd.merge(df_file[pd.notnull(df_file['code_gtin'])], df_products, on='code_gtin', how='left')
-    df_temp = pd.concat([temp, df_file[pd.isnull(df_file['code_gtin'])]], axis=0, sort=False, ignore_index=True)
-    del temp
+            df_group['product_gtin'] = pd.to_numeric(df_group['product_gtin'])
+            temp = pd.merge(df_group[pd.notnull(df_group['product_gtin'])], df_products,
+                            left_on='product_gtin', right_on='code_gtin', how='left')
+            df_source = pd.concat([temp, df_group[pd.isnull(df_group['product_gtin'])]], axis=0, sort=False,
+                                  ignore_index=True)
+            del temp
 
-    df_temp['denomination'] = df_temp['designation']
-    df_temp['obsolete'] = df_temp['obsolete_temp']
-    df_temp['invisible'] = df_temp['invisible_temp']
-    df_temp['conditionnement'] = np.nan
-    df_temp['types'] = np.nan
-    df_temp['especes'] = np.nan
+            df_source['denomination'] = df_source['product_name']
+            df_source['obsolete'] = df_source['obsolete_temp']
+            df_source['invisible'] = df_source['invisible_temp']
+            df_source['conditionnement'] = np.nan
+            df_source['types'] = np.nan
+            df_source['especes'] = np.nan
+            df_source['prix_unitaire'] = np.nan
 
-    # Laboratories
-    # Search existing laboratories in database
-    query_labs = text("""
-        select laboratoire_id, nom_laboratoire as laboratoire 
-        from centrale_laboratoire
-        where laboratoire_id is not null and centrale_id = :id""")
-    df_labs = pd.read_sql_query(query_labs, connection, params={'id': cent_id})
+            # Laboratories
+            # Search existing laboratories in database
+            query_labs = text("""
+                select laboratoire_id, nom_laboratoire as laboratoire 
+                from centrale_laboratoire
+                where laboratoire_id is not null and centrale_id = :id""")
+            df_labs = pd.read_sql_query(query_labs, connection, params={'id': source_id})
 
-    df_temp = pd.merge(df_temp, df_labs, on=['laboratoire'], how='left')
-    df_temp.loc[df_temp['laboratoire_id'].isnull(), 'laboratoire_id'] = df_temp['laboratoire']
+            df_source = pd.merge(df_source, df_labs, left_on=['supplier'], right_on=['laboratoire'], how='left')
+            df_source.loc[df_source['laboratoire_id'].isnull(), 'laboratoire_id'] = df_source['supplier']
 
-    # Therapeutic classes
-    if 'classe_therapeutique' not in df_temp.columns:
-        df_temp['classe_therapeutique'] = np.nan
-    df_temp['famille_therapeutique'] = df_temp['classe_therapeutique'].dropna().apply(
-        lambda x: str(x).replace(' ', '')[:4])
-    temp = pd.merge(df_temp[pd.notnull(df_temp['famille_therapeutique'])], df_classes,
-                    on=['famille_therapeutique'], how='left')
-    df_temp = pd.concat([temp, df_temp[pd.isnull(df_temp['famille_therapeutique'])]], axis=0, sort=False,
-                        ignore_index=True)
-    del temp
+            # Therapeutic classes
+            if 'classe_therapeutique' not in df_source.columns:
+                df_source['classe_therapeutique'] = np.nan
+            df_source['famille_therapeutique'] = df_source['classe_therapeutique'].dropna().apply(
+                lambda x: str(x).replace(' ', '')[:4])
+            temp = pd.merge(df_source[pd.notnull(df_source['famille_therapeutique'])], df_classes,
+                            on=['famille_therapeutique'], how='left')
+            df_source = pd.concat([temp, df_source[pd.isnull(df_source['famille_therapeutique'])]], axis=0, sort=False,
+                                  ignore_index=True)
+            del temp
 
-    df_temp = df_temp[
-        ['produit_id', 'denomination_temp', 'conditionnement_temp', 'laboratoire_id_temp', 'obsolete_temp',
-         'invisible_temp', 'famille_therapeutique_id_temp', 'code_gtin', 'classe_therapeutique',
-         'famille_therapeutique_id', 'denomination', 'conditionnement', 'laboratoire_id', 'obsolete',
-         'invisible', 'types', 'especes', 'code_distributeur', 'designation', 'prix_unitaire']]
-    df_temp.columns = ['Id', 'Dénomination_temp', 'Conditionnement_temp', 'Laboratoire_temp', 'Obsolète_temp',
-                       'Invisible_temp', 'ID classe thérapeutique_temp', 'Code GTIN', 'Autre code GTIN',
-                       'ID classe thérapeutique', 'Dénomination', 'Conditionnement', 'Laboratoire', 'Obsolète',
-                       'Invisible', 'Types', 'Espèces', 'Code_' + cent_name, 'Dénomination_' + cent_name,
-                       'Tarif_' + cent_name]
+            # Check if source code already added
+            df_group["product_code"] = df_group["product_code"].dropna().apply(
+                lambda x: str(x) if type(x) is int else x)
+            df_group = pd.merge(df_group, df_product_sources.loc[(df_product_sources["centrale_id"] == source_id), :],
+                                left_on=['product_code'], right_on=['code_produit'], how='left', indicator=True)
+            df_group = df_group.loc[(df_group['_merge'] != "both"), :]
+            df_group.drop(columns=['_merge'], inplace=True)
 
-    df = pd.concat([df, df_temp.drop_duplicates()], axis=0, sort=False, ignore_index=True)
+            df_source = df_source[
+                ['produit_id', 'denomination_temp', 'conditionnement_temp', 'laboratoire_id_temp', 'obsolete_temp',
+                 'invisible_temp', 'famille_therapeutique_id_temp', 'product_gtin', 'classe_therapeutique',
+                 'famille_therapeutique_id', 'denomination', 'conditionnement', 'laboratoire_id', 'obsolete',
+                 'invisible', 'types', 'especes', 'product_code', 'product_name', 'prix_unitaire']]
+            df_source.columns = ['Id', 'Dénomination_temp', 'Conditionnement_temp', 'Laboratoire_temp', 'Obsolète_temp',
+                                 'Invisible_temp', 'ID classe thérapeutique_temp', 'Code GTIN', 'Autre code GTIN',
+                                 'ID classe thérapeutique', 'Dénomination', 'Conditionnement', 'Laboratoire',
+                                 'Obsolète', 'Invisible', 'Types', 'Espèces', 'Code_' + source_name,
+                                 'Dénomination_' + source_name, 'Tarif_' + source_name]
 
-    # Sort dataframe
-    df = df.sort_values(by=['Laboratoire', 'Code GTIN'])
+            df_final = pd.concat([df_final, df_source.drop_duplicates()], axis=0, sort=False, ignore_index=True)
 
-    return df
+        # Sort dataframe
+        df_final = df_final.sort_values(by=['Laboratoire', 'Code GTIN'])
+
+        logging.debug("Generate files of new products")
+        writer = pd.ExcelWriter(
+            products_out_dir + now + "_" + country_name + "_new_products.xlsx",
+            engine='xlsxwriter')
+        df_final.to_excel(writer, sheet_name='Sheet 1', index=False)
+        workbook = writer.book
+        worksheet = writer.sheets['Sheet 1']
+        red_format = workbook.add_format()
+        red_format.set_bg_color('red')
+        for col in ['R', 'U', 'X', 'AA', 'AD', 'AG', 'AJ', 'AM', 'AP', 'AS', 'AV', 'AY', 'BB']:
+            worksheet.conditional_format(col + '2:' + col + str(len(df_final.index)),
+                                         {'type': 'duplicate', 'format': red_format})
+        writer.save()
+        shutil.copy(
+            products_out_dir + now + "_" + country_name + "_new_products.xlsx",
+            products_out_dir + now + "_" + country_name + "_new_products_source.xlsx")
+    else:
+        logging.debug(f'...no files to process !')
+
+    logging.info(f"** Generate new products of purchases for country '{country_name}' end **")
 
 
-def process():
-    print('Processing files...')
-    df = pd.DataFrame(columns=['Id', 'Dénomination_temp', 'Conditionnement_temp', 'Laboratoire_temp',
-                               'Obsolète_temp', 'Invisible_temp', 'ID classe thérapeutique_temp', 'Code GTIN',
-                               'Autre code GTIN', 'ID classe thérapeutique', 'Dénomination', 'Conditionnement',
-                               'Laboratoire', 'Obsolète', 'Invisible', 'Types', 'Espèces',
-                               'Code_Alcyon', 'Dénomination_Alcyon', 'Tarif_Alcyon',
-                               'Code_Centravet', 'Dénomination_Centravet', 'Tarif_Centravet',
-                               'Code_Coveto', 'Dénomination_Coveto', 'Tarif_Coveto',
-                               'Code_Alibon', 'Dénomination_Alibon', 'Tarif_Alibon',
-                               'Code_Vetapro', 'Dénomination_Vetapro', 'Tarif_Vetapro',
-                               'Code_Vetys', 'Dénomination_Vetys', 'Tarif_Vetys',
-                               'Code_Hippocampe', 'Dénomination_Hippocampe', 'Tarif_Hippocampe',
-                               'Code_Agripharm', 'Dénomination_Agripharm', 'Tarif_Agripharm',
-                               'Code_Elvetis', 'Dénomination_Elvetis', 'Tarif_Elvetis',
-                               'Code_Longimpex', 'Dénomination_Longimpex', 'Tarif_Longimpex',
-                               'Code_Direct-5-Biové', 'Dénomination_Direct-5-Biové', 'Tarif_Direct-5-Biové',
-                               'Code_Cedivet', 'Dénomination_Cedivet', 'Tarif_Cedivet'])
+def process_suppliers():
+    logging.info(f"** Generate new suppliers of purchases for country '{country_name}' start **")
 
-    if os.path.isfile(logDir + date[0:6] + "_Nouveaux produits_achats.xlsx"):
-        os.remove(logDir + date[0:6] + "_Nouveaux produits_achats.xlsx")
+    suppliers_dir = root_dir + constant.DIR_SUPPLIERS + "/" + country_name + "/"
+    suppliers_new_dir = suppliers_dir + constant.DIR_NEW + '/'
+    suppliers_out_dir = suppliers_dir + constant.DIR_ARCHIVES + '/' + now + "/"
+    suppliers_out_files_dir = suppliers_out_dir + constant.DIR_FILES + "/"
 
-    # Search existing products in database
-    query_products = text("""
-        select id as produit_id, denomination as denomination_temp, conditionnement as conditionnement_temp, 
-            laboratoire_id as laboratoire_id_temp, obsolete as obsolete_temp, invisible as invisible_temp, 
-            famille_therapeutique_id as famille_therapeutique_id_temp, code_gtin
-        from produits
-        where code_gtin is not null""")
-    df_products = pd.read_sql_query(query_products, connection)
-    df_products['code_gtin'] = pd.to_numeric(df_products['code_gtin'])
+    file_exist = False
+    for root, dirs, files_list in os.walk(suppliers_new_dir):
+        if files_list:
+            file_exist = True
+            break
 
-    # Search existing therapeutic classes in database
-    query_classes = text("""
-        select id as famille_therapeutique_id, CONCAT(classe1_code, coalesce(classe2_code, ''), 
-            coalesce(classe3_code, '')) as famille_therapeutique
-        from familles_therapeutiques""")
-    df_classes = pd.read_sql_query(query_classes, connection)
+    if file_exist:
+        # Create directories if not exist
+        os.makedirs(suppliers_out_files_dir, exist_ok=True)
 
-    # Aggregate all files of new products
-    for f in sorted(glob.glob(r'' + logDir + 'unknown_products_*.xlsx')):
-        print(f'Processing file "{os.path.basename(f)}" ...')
+        for f in sorted(glob.glob(r'' + suppliers_new_dir + '*.*')):
+            filename = os.path.basename(f)
+            logging.debug(f'** Move "{filename}" to backup files directory **')
+            shutil.move(f, suppliers_out_files_dir + filename)
 
-        if os.stat(f).st_size > 0:
-            df_file = pd.read_excel(f, header=None)
-            if len(df_file.index) > 0:
-                cent_name = Path(f).stem.split('_')[2]
-                df = process_file(df_file, cent_name, df_products, df_classes, df)
-                # Create Excel file
-                print("Generating Excel file...")
-                create_excel_file(logDir + date[0:6] + "_Nouveaux produits_achats.xlsx", df, True)
-            else:
-                print(f'File "{os.path.basename(f)}" is empty !')
-        else:
-            print(f'File "{os.path.basename(f)}" is empty !')
+        # Initialize dataframe of products
+        df = pd.DataFrame([])
 
+        logging.debug(f'Aggregate files...')
+        for f in sorted(glob.glob(r'' + suppliers_out_files_dir + '*.*')):
+            df = pd.concat([df, pd.read_excel(f)], axis=0, sort=False, ignore_index=True)
 
-def create_excel_file(filename, df, header):
-    wb = Workbook()
-    ws = wb.active
+        # Save dataframe for logs
+        writer = pd.ExcelWriter(
+            suppliers_out_dir + now + "_unknown_suppliers_aggregated.xlsx",
+            engine='xlsxwriter')
+        df.to_excel(writer, index=False)
+        writer.save()
+        logging.debug(f'Aggregated file is generated !')
 
-    for r in dataframe_to_rows(df, index=False, header=header):
-        ws.append(r)
-    wb.save(filename)
+        df.drop_duplicates(inplace=True)
+
+        df = df[['source_id', 'supplier']]
+        df.columns = ['centrale_id', 'nom_laboratoire']
+        df.to_sql('centrale_laboratoire', engine, if_exists='append', index=False, chunksize=1000)
+        logging.debug(f'Created {len(df.index)} new suppliers for sources')
+    else:
+        logging.debug(f'...no files to process !')
+
+    logging.info(f"** Generate new suppliers of purchases for country '{country_name}' end **")
 
 
 if __name__ == "__main__":
     # Getting args
-    args = getArguments()
-    date = args.date
+    args = get_arguments()
+    country_id = int(args.country)
+    country_name = common.get_name_of_country(country_id)
+    debug = args.debug
 
-    logDir = '/home/ftpusers/amadeo/script-achats/elia-digital/' + date + "/"
+    now = datetime.now().strftime('%Y%m%d%H%M%S')
 
-    # Create directories if not exist
-    os.makedirs(logDir, exist_ok=True)
+    # Initialize logging
+    if debug:
+        logging.basicConfig(format="%(asctime)s  %(levelname)s: %(message)s", level="DEBUG")
+    else:
+        params_logging = config(section="logging")
+        logging.basicConfig(
+            filename=params_logging["url"] + "/" + constant.LOG_PURCHASES_FILENAME + constant.LOG_EXTENSION,
+            format="%(asctime)s  %(levelname)s: %(message)s", level=params_logging["level"])
 
-    cents = ['Alcyon', 'Centravet', 'Coveto', 'Alibon', 'Vetapro', 'Vetys', 'Hippocampe', 'Agripharm', 'Elvetis',
-             'Longimpex', 'Direct-5-Biové', 'Cedivet']
-
-    print(f'** Generate file of new products of purchases **')
+    logging.info(f"Generating from purchases errors start !")
 
     try:
+        # Reading parameters of directory
+        params_dir = config(section="directories")
+        root_dir = params_dir["root_dir"] + "/"
+
         # Reading parameters of database
-        params = config()
+        params_db = config()
 
         # Connecting to the PostgreSQL server
-        print('Connecting to the PostgreSQL database...')
-        engine = create_engine(URL(**params), echo=False)
+        logging.debug('Connecting to the PostgreSQL database...')
+        engine = create_engine(URL(**params_db), echo=False)
         connection = engine.connect()
 
-        aggregate_files()
-        process()
+        # Products
+        process_products()
+
+        # Suppliers
+        process_suppliers()
 
     except (Exception, psycopg2.Error) as error:
-        print("Failed : ", error)
-        # trans.rollback()
-        raise
+        logging.error(error)
 
     finally:
         # closing database connection.
         if connection:
             connection.close()
-            print("PostgreSQL connection is closed")
+            logging.debug("PostgreSQL connection is closed")
+            logging.info(f"Generating from purchases errors end !")
+

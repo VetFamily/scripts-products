@@ -4,3 +4,10 @@ host=localhost
 database=ed-produits
 username=elia-digital
 password=
+
+[directories]
+root_dir=/home/ftpusers/amadeo
+
+[logging]
+url=/var/log/amadeo
+level=INFO

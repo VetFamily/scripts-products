@@ -4,15 +4,16 @@
 
 
 import argparse
-import numpy as np
-from openpyxl import load_workbook
-from openpyxl import Workbook
-from openpyxl.utils.dataframe import dataframe_to_rows
-import os
-import pandas as pd
-from pathlib import Path
-import psycopg2
 import glob
+import os
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import psycopg2
+from openpyxl import Workbook
+from openpyxl import load_workbook
+from openpyxl.utils.dataframe import dataframe_to_rows
 from sqlalchemy import create_engine
 from sqlalchemy.engine.url import URL
 from sqlalchemy.sql import text
@@ -20,7 +21,7 @@ from sqlalchemy.sql import text
 from config import config
 
 
-def getArguments():
+def get_arguments():
     parser = argparse.ArgumentParser(description='Generation du fichier des nouveaux produits')
     # parser.add_argument('-o', '--output', help='Output file name', default='stdout')
     required_args = parser.add_argument_group('required named arguments')
@@ -42,7 +43,10 @@ def process():
                                'Code_Hippocampe', 'Dénomination_Hippocampe', 'Tarif_Hippocampe',
                                'Code_Agripharm', 'Dénomination_Agripharm', 'Tarif_Agripharm',
                                'Code_Elvetis', 'Dénomination_Elvetis', 'Tarif_Elvetis',
-                               'Code_Longimpex', 'Dénomination_Longimpex', 'Tarif_Longimpex'])
+                               'Code_Longimpex', 'Dénomination_Longimpex', 'Tarif_Longimpex',
+                               'Code_Direct', 'Dénomination_Direct', 'Tarif_Direct',
+                               'Code_Cedivet', 'Dénomination_Cedivet', 'Tarif_Cedivet',
+                               'Code_Covetrus', 'Dénomination_Covetrus', 'Tarif_Covetrus'])
 
     if os.path.isfile(logDir + date[0:6] + "_Nouveaux produits_catalogues.xlsx"):
         os.remove(logDir + date[0:6] + "_Nouveaux produits_catalogues.xlsx")
@@ -93,6 +97,12 @@ def process():
             cent_id = 9
         elif cent_name == 'Longimpex':
             cent_id = 10
+        elif cent_name == 'Direct':
+            cent_id = 11
+        elif cent_name == 'Cedivet':
+            cent_id = 12
+        elif cent_name == 'Covetrus':
+            cent_id = 13
 
         df_file.columns = ['code_distributeur', 'code_gtin', 'code_ean', 'code_amm', 'code_remplacement',
                            'designation', 'categorie', 'famille', 'sous_famille', 'famille_commerciale',
@@ -176,7 +186,7 @@ def create_excel_file(filename, df, append):
 
 if __name__ == "__main__":
     # Getting args
-    args = getArguments()
+    args = get_arguments()
     date = args.date
 
     logDir = '/home/ftpusers/amadeo/script-catalogues/' + date + "/"
