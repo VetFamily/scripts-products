@@ -21,6 +21,7 @@ DIR_FILES = "files"
 
 # Log
 LOG_PURCHASES_FILENAME = "products-purchases"
+LOG_CATALOGS_FILENAME = "products-catalogs"
 LOG_EXTENSION = ".log"
 
 # Suppliers

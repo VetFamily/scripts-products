@@ -7,13 +7,13 @@ import argparse
 import glob
 import logging
 import os
+import re
 import shutil
 from datetime import datetime
 
 import numpy as np
 import pandas as pd
 import psycopg2
-import xlsxwriter
 from sqlalchemy import create_engine
 from sqlalchemy.engine.url import URL
 from sqlalchemy.sql import text
@@ -37,12 +37,12 @@ def process_products():
 
     products_dir = root_dir + constant.DIR_PRODUCTS + "/" + country_name + "/"
     products_new_dir = products_dir + constant.DIR_NEW + '/'
-    products_out_dir = products_dir + constant.DIR_ARCHIVES + '/' + now + "/"
+    products_out_dir = products_dir + constant.DIR_ARCHIVES + '/' + now + "_purchases/"
     products_out_files_dir = products_out_dir + constant.DIR_FILES + "/"
 
     file_exist = False
-    for root, dirs, files_list in os.walk(products_new_dir):
-        if files_list:
+    for filename in os.listdir(products_new_dir):
+        if re.search('unknown_products_*.*', filename):
             file_exist = True
             break
 
@@ -50,7 +50,7 @@ def process_products():
         # Create directories if not exist
         os.makedirs(products_out_files_dir, exist_ok=True)
 
-        for f in sorted(glob.glob(r'' + products_new_dir + '*.*')):
+        for f in sorted(glob.glob(r'' + products_new_dir + 'unknown_products_*.*')):
             filename = os.path.basename(f)
             logging.debug(f'** Move "{filename}" to backup files directory **')
             shutil.move(f, products_out_files_dir + filename)
@@ -181,7 +181,7 @@ def process_products():
 
         logging.debug("Generate files of new products")
         writer = pd.ExcelWriter(
-            products_out_dir + now + "_" + country_name + "_new_products.xlsx",
+            products_out_dir + now + "_" + country_name + "_new_products_purchases.xlsx",
             engine='xlsxwriter')
         df_final.to_excel(writer, sheet_name='Sheet 1', index=False)
         workbook = writer.book
@@ -193,8 +193,8 @@ def process_products():
                                          {'type': 'duplicate', 'format': red_format})
         writer.save()
         shutil.copy(
-            products_out_dir + now + "_" + country_name + "_new_products.xlsx",
-            products_out_dir + now + "_" + country_name + "_new_products_source.xlsx")
+            products_out_dir + now + "_" + country_name + "_new_products_purchases.xlsx",
+            products_out_dir + now + "_" + country_name + "_new_products_purchases_source.xlsx")
     else:
         logging.debug(f'...no files to process !')
 
@@ -206,12 +206,12 @@ def process_suppliers():
 
     suppliers_dir = root_dir + constant.DIR_SUPPLIERS + "/" + country_name + "/"
     suppliers_new_dir = suppliers_dir + constant.DIR_NEW + '/'
-    suppliers_out_dir = suppliers_dir + constant.DIR_ARCHIVES + '/' + now + "/"
+    suppliers_out_dir = suppliers_dir + constant.DIR_ARCHIVES + '/' + now + "_purchases/"
     suppliers_out_files_dir = suppliers_out_dir + constant.DIR_FILES + "/"
 
     file_exist = False
-    for root, dirs, files_list in os.walk(suppliers_new_dir):
-        if files_list:
+    for filename in os.listdir(suppliers_new_dir):
+        if re.search('unknown_suppliers_*.*', filename):
             file_exist = True
             break
 
@@ -299,4 +299,3 @@ if __name__ == "__main__":
             connection.close()
             logging.debug("PostgreSQL connection is closed")
             logging.info(f"Generating from purchases errors end !")
-

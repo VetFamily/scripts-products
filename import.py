@@ -22,13 +22,14 @@ from sqlalchemy.engine.url import URL
 from sqlalchemy.sql import text
 
 from config import config
+from src.common import common
 
 
 def getArguments():
     parser = argparse.ArgumentParser(description='Lancement du traitement du fichier de valorisations Vetapro')
     # parser.add_argument('-o', '--output', help='Output file name', default='stdout')
-    optional_args = parser.add_argument_group('optional named arguments')
-    optional_args.add_argument('-s', '--simulate', help='Simulation de l\'integration du fichier', action='store_true')
+    required_args = parser.add_argument_group('required named arguments')
+    required_args.add_argument('-c', '--country', help='ID of country', required=True)
     return parser.parse_args()
 
 
@@ -80,6 +81,7 @@ def insert_types(df):
         df_types.columns = ['type_id', 'produit_id']
         df_types = df_types.replace(
             {'type_id': {"Aliment": 1, "Antibiotique": 2, "Divers": 3, "Matériel": 4, "Médicament": 5}})
+        df_types = df_types.drop_duplicates()
         df_types.to_sql('produit_type', engine, if_exists='append', index=False, chunksize=1000)
         count_of_types = len(df_types.index)
 
@@ -136,6 +138,7 @@ def insert_species(df):
         df_species.columns = ['espece_id', 'produit_id']
         df_species = df_species.replace(
             {'espece_id': {"Canine": 1, "Equine":2, "Rurale": 3, "Porc": 4, "Volaille": 5, "Autres": 6}})
+        df_species = df_species.drop_duplicates()
         df_species.to_sql('espece_produit', engine, if_exists='append', index=False, chunksize=1000)
         count_of_species = len(df_species.index)
 
@@ -158,11 +161,14 @@ def insert_central_codes(df, cent_id, cent_name):
     df_temp['nom'] = df_temp['nom'].dropna().apply(lambda x: str(x))
 
     query_cp = text("""
-                    SELECT id as centrale_produit_id, code_produit
-                    FROM centrale_produit
-                    WHERE centrale_id = :id""")
-    df_temp = pd.merge(df_temp, pd.read_sql_query(query_cp, connection, params={'id': cent_id}), on='code_produit',
-                       how='left')
+                        SELECT id as centrale_produit_id, code_produit
+                        FROM centrale_produit
+                        WHERE centrale_id = :sourceId
+                        AND country_id = :countryId
+                                                        """)
+    df_temp = pd.merge(df_temp,
+                       pd.read_sql_query(query_cp, connection, params={'sourceId': cent_id, 'countryId': country_id}),
+                       on='code_produit', how='left')
 
     df_temp_upd = df_temp.loc[df_temp['centrale_produit_id'].notnull(), :].copy()
 
@@ -182,18 +188,21 @@ def insert_central_codes(df, cent_id, cent_name):
     # Insert into centrale_produit
     df_temp_new_cp = df_temp_new[['produit_id', 'code_produit']]
     df_temp_new_cp.insert(0, 'centrale_id', cent_id)
+    df_temp_new_cp.insert(0, 'country_id', country_id)
     df_temp_new_cp.to_sql('centrale_produit', engine, if_exists='append', index=False, chunksize=1000)
     count += len(df_temp_new_cp.index)
 
     df_temp_new = df_temp_new.drop('centrale_produit_id', axis=1)
-    df_temp_new = pd.merge(df_temp_new, pd.read_sql_query(query_cp, connection, params={'id': cent_id}),
+    df_temp_new = pd.merge(df_temp_new, pd.read_sql_query(query_cp, connection,
+                                                          params={'sourceId': cent_id, 'countryId': country_id}),
                            on='code_produit', how='left')
 
     if len(df_temp_new.index) > 0:
         # Insert into centrale_produit_denominations
         df_temp_new_cpd = df_temp_new[['centrale_produit_id', 'nom']]
         df_temp_new_cpd.insert(0, 'date_creation', date)
-        df_temp_new_cpd.to_sql('centrale_produit_denominations', engine, if_exists='append', index=False, chunksize=1000)
+        df_temp_new_cpd.to_sql('centrale_produit_denominations', engine, if_exists='append', index=False,
+                               chunksize=1000)
 
         del df_temp_new_cpd
 
@@ -202,13 +211,32 @@ def insert_central_codes(df, cent_id, cent_name):
     del df_temp, df_temp_upd, df_temp_new
 
 
+def insert_product_country(df):
+    query = text("""
+                    select distinct product_id from product_country
+                    where country_id = :countryId
+                    """)
+    df_tmp = pd.read_sql_query(query, connection, params={'countryId': country_id})
+    # Formatting columns
+    df_tmp['product_id'] = pd.to_numeric(df_tmp['product_id'])
+
+    df_products = df.loc[(~df['produit_id'].isin(df_tmp['product_id'])), :].copy()
+    if len(df_products.index) > 0:
+        df_products = df_products[['produit_id']]
+        df_products.rename(columns={'produit_id': 'product_id'}, inplace=True)
+        df_products.insert(0, 'country_id', country_id)
+        df_products.to_sql('product_country', engine, if_exists='append', index=False, chunksize=1000)
+
+    del df_products, df_tmp
+
+
 def process():
     df = df_init.where(pd.notnull(df_init), None)
     df['Obsolète'] = df['Obsolète'].astype(bool)
     df['Invisible'] = df['Invisible'].astype(bool)
     df['Id'] = pd.to_numeric(df['Id'])
     df['Code GTIN'] = df['Code GTIN'].dropna().apply(lambda x: str(int(x)))
-    df['Autre code GTIN'] = df['Autre code GTIN'].dropna().apply(lambda x: str(int(x)))
+    df['Autre code GTIN'] = df['Autre code GTIN'].dropna().apply(lambda x: str(int(x)) if isinstance(x, int) else str(x))
     df['Dénomination'] = df['Dénomination'].dropna().apply(lambda x: str(x))
     df['Conditionnement'] = df['Conditionnement'].dropna().apply(lambda x: str(x))
 
@@ -229,7 +257,11 @@ def process():
     df['produit_id'] = pd.to_numeric(df['produit_id'])
 
     # Add Vetapro codes
-    df.loc[(df['Id'].isnull() & df['Code_Vetapro'].isnull()), 'Code_Vetapro'] = df['produit_id']
+    if country_id == 1:
+        df.loc[(df['Id'].isnull() & df['Code_Vetapro'].isnull()), 'Code_Vetapro'] = df['produit_id']
+
+    # Add country ID for products
+    insert_product_country(df)
 
     # Remove .0 from codes columns
     for col in df.columns:
@@ -276,10 +308,13 @@ def process():
     insert_central_codes(df, 10, 'Longimpex')
 
     # Insert Direct Biové codes
-    insert_central_codes(df, 11, 'Direct-5-Biové')
+    insert_central_codes(df, 11, 'Direct')
 
     # Insert Cedivet codes
     insert_central_codes(df, 12, 'Cedivet')
+
+    # Insert Covetrus codes
+    insert_central_codes(df, 13, 'Covetrus')
 
 
 def create_excel_file(filename, df, append):
@@ -299,12 +334,15 @@ if __name__ == "__main__":
 
     # Getting args
     args = getArguments()
-    simulation = args.simulate
+    country_id = int(args.country)
+    country_name = common.get_name_of_country(country_id)
 
-    initDir = './fichiers/nouveaux/'
-    workDir = './encours/nouveaux/'
-    historicDir = './historiques/nouveaux/' + datetime.now().strftime('%Y%m%d') + "/"
-    logDir = './logs/nouveaux/' + datetime.now().strftime('%Y%m%d') + "/"
+    now = datetime.now().strftime('%Y%m%d')
+
+    initDir = './fichiers/nouveaux/' + country_name + "/"
+    workDir = './encours/nouveaux/' + country_name + "/"
+    historicDir = './historiques/nouveaux/' + country_name + "/" + now + "/"
+    logDir = './logs/nouveaux/' + country_name + "/" + now + "/"
 
     # Create directories if not exist
     os.makedirs(workDir, exist_ok=True)
@@ -342,7 +380,7 @@ if __name__ == "__main__":
                 count_of_upd_products = 0
                 count_of_centrals_codes = {"Alcyon": 0, "Centravet": 0, "Coveto": 0, "Alibon": 0, "Vetapro": 0,
                                            "Vetys": 0, "Hippocampe": 0, "Agripharm": 0, "Elvetis": 0, "Longimpex": 0,
-                                           "Direct-5-Biové": 0, "Cedivet": 0}
+                                           "Direct": 0, "Cedivet": 0, "Covetrus": 0}
                 # Read Excel file
                 df_init = pd.read_excel(workDir + os.path.basename(f))
                 # Process file
