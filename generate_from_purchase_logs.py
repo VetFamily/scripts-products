@@ -32,6 +32,44 @@ def get_arguments():
     return parser.parse_args()
 
 
+def insert_source_code(df, source_id):
+    df_source_tmp = df.copy()
+    date = pd.to_datetime("2016-01-01", format='%Y-%m-%d', errors='coerce')
+
+    # Insert into centrale_produit
+    df_temp_new_cp = df_source_tmp[['product_code']].copy()
+    df_temp_new_cp.columns = ['code_produit']
+    df_temp_new_cp.drop_duplicates(inplace=True)
+    df_temp_new_cp.insert(0, 'centrale_id', source_id)
+    df_temp_new_cp.insert(0, 'country_id', country_id)
+    df_temp_new_cp.to_sql('centrale_produit', engine, if_exists='append', index=False, chunksize=1000)
+    print(f"Table centrale_produit : {len(df_temp_new_cp.index)} elements created")
+
+    # Search existing codes sources of products in database
+    query_product_sources = text("""
+        select id as centrale_produit_id, code_produit, centrale_id
+        from centrale_produit
+        where country_id = :countryId""")
+    df_product_sources = pd.read_sql_query(query_product_sources, connection, params={"countryId": country_id})
+
+    df_source_tmp = df_source_tmp.drop('centrale_produit_id', axis=1)
+    df_source_tmp = pd.merge(df_source_tmp, df_product_sources.loc[(df_product_sources["centrale_id"] == source_id), :],
+                             left_on=['product_code'], right_on=['code_produit'], how='left')
+    if len(df_source_tmp.index) > 0:
+        # Insert into centrale_produit_denominations
+        df_temp_new_cpd = df_source_tmp[['centrale_produit_id', 'product_name']].copy()
+        df_temp_new_cpd.drop_duplicates(inplace=True)
+        df_temp_new_cpd.columns = ['centrale_produit_id', 'nom']
+        df_temp_new_cpd.insert(0, 'date_creation', date)
+        df_temp_new_cpd.to_sql('centrale_produit_denominations', engine, if_exists='append', index=False,
+                               chunksize=1000)
+        print(f"Table centrale_produit_denominations : {len(df_temp_new_cpd.index)} elements created")
+
+        del df_temp_new_cpd
+
+    del df_source_tmp, df_temp_new_cp
+
+
 def process_products():
     logging.info(f"** Generate new products of purchases for country '{country_name}' start **")
 
@@ -118,10 +156,11 @@ def process_products():
         for source_id, df_group in df.groupby(['source_id']):
             source_name = common.get_name_of_source(source_id, None).capitalize()
 
-            df_group['product_gtin'] = pd.to_numeric(df_group['product_gtin'])
-            temp = pd.merge(df_group[pd.notnull(df_group['product_gtin'])], df_products,
+            df_temp = df_group.copy()
+            df_temp['product_gtin'] = pd.to_numeric(df_temp['product_gtin'], errors="coerce")
+            temp = pd.merge(df_temp[pd.notnull(df_temp['product_gtin'])], df_products,
                             left_on='product_gtin', right_on='code_gtin', how='left')
-            df_source = pd.concat([temp, df_group[pd.isnull(df_group['product_gtin'])]], axis=0, sort=False,
+            df_source = pd.concat([temp, df_temp[pd.isnull(df_temp['product_gtin'])]], axis=0, sort=False,
                                   ignore_index=True)
             del temp
 
@@ -134,14 +173,20 @@ def process_products():
             df_source['prix_unitaire'] = np.nan
 
             # Laboratories
-            # Search existing laboratories in database
-            query_labs = text("""
-                select laboratoire_id, nom_laboratoire as laboratoire 
-                from centrale_laboratoire
-                where laboratoire_id is not null and centrale_id = :id""")
-            df_labs = pd.read_sql_query(query_labs, connection, params={'id': source_id})
+            if source_id != constant.SOURCE_DIRECT_ID:
+                # Search existing laboratories in database
+                query_labs = text("""
+                    select laboratoire_id, nom_laboratoire as laboratoire 
+                    from centrale_laboratoire
+                    where laboratoire_id is not null and centrale_id = :id""")
+                df_labs = pd.read_sql_query(query_labs, connection, params={'id': source_id})
 
-            df_source = pd.merge(df_source, df_labs, left_on=['supplier'], right_on=['laboratoire'], how='left')
+                df_source = pd.merge(df_source, df_labs, left_on=['supplier'], right_on=['laboratoire'], how='left')
+            else:
+                # Case of direct
+                for supplier_name in df_source['supplier'].drop_duplicates():
+                    supplier_id = common.get_id_of_source(supplier_name)[1]
+                    df_source.loc[(df_source['supplier'] == supplier_name), 'laboratoire_id'] = supplier_id
             df_source.loc[df_source['laboratoire_id'].isnull(), 'laboratoire_id'] = df_source['supplier']
 
             # Therapeutic classes
@@ -156,12 +201,15 @@ def process_products():
             del temp
 
             # Check if source code already added
-            df_group["product_code"] = df_group["product_code"].dropna().apply(
+            df_source["product_code"] = df_source["product_code"].dropna().apply(
                 lambda x: str(x) if type(x) is int else x)
-            df_group = pd.merge(df_group, df_product_sources.loc[(df_product_sources["centrale_id"] == source_id), :],
-                                left_on=['product_code'], right_on=['code_produit'], how='left', indicator=True)
-            df_group = df_group.loc[(df_group['_merge'] != "both"), :]
-            df_group.drop(columns=['_merge'], inplace=True)
+            df_source = pd.merge(df_source, df_product_sources.loc[(df_product_sources["centrale_id"] == source_id), :],
+                                 left_on=['product_code'], right_on=['code_produit'], how='left', indicator=True)
+            df_source = df_source.loc[(df_source['_merge'] != "both"), :]
+            df_source.drop(columns=['_merge'], inplace=True)
+
+            # Insert source code in database
+            insert_source_code(df_source, source_id)
 
             df_source = df_source[
                 ['produit_id', 'denomination_temp', 'conditionnement_temp', 'laboratoire_id_temp', 'obsolete_temp',
@@ -231,6 +279,8 @@ def process_suppliers():
         for f in sorted(glob.glob(r'' + suppliers_out_files_dir + '*.*')):
             df = pd.concat([df, pd.read_excel(f)], axis=0, sort=False, ignore_index=True)
 
+        df.drop_duplicates(inplace=True)
+
         # Save dataframe for logs
         writer = pd.ExcelWriter(
             suppliers_out_dir + now + "_unknown_suppliers_aggregated.xlsx",
@@ -238,8 +288,6 @@ def process_suppliers():
         df.to_excel(writer, index=False)
         writer.save()
         logging.debug(f'Aggregated file is generated !')
-
-        df.drop_duplicates(inplace=True)
 
         df = df[['source_id', 'supplier']]
         df.columns = ['centrale_id', 'nom_laboratoire']

@@ -219,7 +219,6 @@ def process_products():
 
 
 def process_suppliers():
-    # TODO just move to archives directory
     logging.info(f"** Generate new suppliers of catalogs for country '{country_name}' start **")
 
     suppliers_dir = root_dir + constant.DIR_SUPPLIERS + "/" + country_name + "/"
@@ -248,6 +247,8 @@ def process_suppliers():
         logging.debug(f'Aggregate files...')
         for f in sorted(glob.glob(r'' + suppliers_out_files_dir + '*.*')):
             df = pd.concat([df, pd.read_excel(f)], axis=0, sort=False, ignore_index=True)
+
+        df.drop_duplicates(inplace=True)
 
         # Save dataframe for logs
         writer = pd.ExcelWriter(
