@@ -264,25 +264,6 @@ def process_suppliers():
 
 
 if __name__ == "__main__":
-    # Getting args
-    args = get_arguments()
-    country_id = int(args.country)
-    country_name = common.get_name_of_country(country_id)
-    debug = args.debug
-
-    now = datetime.now().strftime('%Y%m%d%H%M%S')
-
-    # Initialize logging
-    if debug:
-        logging.basicConfig(format="%(asctime)s  %(levelname)s: %(message)s", level="DEBUG")
-    else:
-        params_logging = config(section="logging")
-        logging.basicConfig(
-            filename=params_logging["url"] + "/" + constant.LOG_CATALOGS_FILENAME + constant.LOG_EXTENSION,
-            format="%(asctime)s  %(levelname)s: %(message)s", level=params_logging["level"])
-
-    logging.info(f"Generating from catalogs errors start !")
-
     try:
         # Reading parameters of directory
         params_dir = config(section="directories")
@@ -295,6 +276,25 @@ if __name__ == "__main__":
         logging.debug('Connecting to the PostgreSQL database...')
         engine = create_engine(URL(**params_db), echo=False)
         connection = engine.connect()
+
+        # Getting args
+        args = get_arguments()
+        country_id = int(args.country)
+        country_name = common.get_name_of_country(connection, country_id)
+        debug = args.debug
+
+        now = datetime.now().strftime('%Y%m%d%H%M%S')
+
+        # Initialize logging
+        if debug:
+            logging.basicConfig(format="%(asctime)s  %(levelname)s: %(message)s", level="DEBUG")
+        else:
+            params_logging = config(section="logging")
+            logging.basicConfig(
+                filename=params_logging["url"] + "/" + constant.LOG_CATALOGS_FILENAME + constant.LOG_EXTENSION,
+                format="%(asctime)s  %(levelname)s: %(message)s", level=params_logging["level"])
+
+        logging.info(f"Generating from catalogs errors start !")
 
         # Products
         process_products()

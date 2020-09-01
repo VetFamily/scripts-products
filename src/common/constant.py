@@ -1,6 +1,6 @@
 
 # Countries
-COUNTRY_FRANCE_ID = 1
+"""COUNTRY_FRANCE_ID = 1
 COUNTRY_NETHERLANDS_ID = 2
 
 countries = {
@@ -10,7 +10,7 @@ countries = {
     COUNTRY_NETHERLANDS_ID: {
         "name": "netherlands"
     }
-}
+}"""
 
 # Directories
 DIR_PRODUCTS = "products"
@@ -25,7 +25,7 @@ LOG_CATALOGS_FILENAME = "products-catalogs"
 LOG_EXTENSION = ".log"
 
 # Suppliers
-SUPPLIER_AUDEVARD_ID = 1
+"""SUPPLIER_AUDEVARD_ID = 1
 SUPPLIER_AXIENCE_ID = 2
 SUPPLIER_BAYER_ID = 3
 SUPPLIER_BIMEDA_ID = 4
@@ -180,7 +180,7 @@ sources = {
         "loc_year": 1
     },
     SOURCE_VETYSPHARMA_ID: {
-        "name": "vetyspharma",
+        "name": "vetys",
         "nb_of_columns": 10,
         "loc_clinic_code": 0,
         "loc_clinic_name": 0,
@@ -557,4 +557,4 @@ sources_direct = {
     SUPPLIER_BBRAUN_ID: {
         "name": "bbraun"
     },
-}
+}"""

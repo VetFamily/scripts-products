@@ -36,6 +36,17 @@ def insert_source_code(df, source_id):
     df_source_tmp = df.copy()
     date = pd.to_datetime("2016-01-01", format='%Y-%m-%d', errors='coerce')
 
+    df_source_tmp = df_source_tmp.drop(columns=['centrale_produit_id'])
+    query_product_sources = text("""
+        select id as centrale_produit_id, code_produit as product_code
+        from centrale_produit
+        where centrale_id = :sourceId 
+        and country_id = :countryId""")
+    df_source_tmp = pd.merge(df_source_tmp, pd.read_sql_query(query_product_sources, connection,
+                                                              params={"sourceId": source_id, "countryId": country_id}),
+                             on=['product_code'], how='left')
+    df_source_tmp = df_source_tmp.loc[df_source_tmp['centrale_produit_id'].isnull(), :]
+
     # Insert into centrale_produit
     df_temp_new_cp = df_source_tmp[['product_code']].copy()
     df_temp_new_cp.columns = ['code_produit']
@@ -43,18 +54,14 @@ def insert_source_code(df, source_id):
     df_temp_new_cp.insert(0, 'centrale_id', source_id)
     df_temp_new_cp.insert(0, 'country_id', country_id)
     df_temp_new_cp.to_sql('centrale_produit', engine, if_exists='append', index=False, chunksize=1000)
-    print(f"Table centrale_produit : {len(df_temp_new_cp.index)} elements created")
+    logging.debug(f"Table centrale_produit : {len(df_temp_new_cp.index)} elements created")
 
     # Search existing codes sources of products in database
-    query_product_sources = text("""
-        select id as centrale_produit_id, code_produit, centrale_id
-        from centrale_produit
-        where country_id = :countryId""")
-    df_product_sources = pd.read_sql_query(query_product_sources, connection, params={"countryId": country_id})
+    df_source_tmp = df_source_tmp.drop(columns=['centrale_produit_id'])
+    df_source_tmp = pd.merge(df_source_tmp, pd.read_sql_query(query_product_sources, connection,
+                                                              params={"sourceId": source_id, "countryId": country_id}),
+                             on=['product_code'], how='left')
 
-    df_source_tmp = df_source_tmp.drop('centrale_produit_id', axis=1)
-    df_source_tmp = pd.merge(df_source_tmp, df_product_sources.loc[(df_product_sources["centrale_id"] == source_id), :],
-                             left_on=['product_code'], right_on=['code_produit'], how='left')
     if len(df_source_tmp.index) > 0:
         # Insert into centrale_produit_denominations
         df_temp_new_cpd = df_source_tmp[['centrale_produit_id', 'product_name']].copy()
@@ -63,7 +70,7 @@ def insert_source_code(df, source_id):
         df_temp_new_cpd.insert(0, 'date_creation', date)
         df_temp_new_cpd.to_sql('centrale_produit_denominations', engine, if_exists='append', index=False,
                                chunksize=1000)
-        print(f"Table centrale_produit_denominations : {len(df_temp_new_cpd.index)} elements created")
+        logging.debug(f"Table centrale_produit_denominations : {len(df_temp_new_cpd.index)} elements created")
 
         del df_temp_new_cpd
 
@@ -154,7 +161,8 @@ def process_products():
         df_classes = pd.read_sql_query(query_classes, connection)
 
         for source_id, df_group in df.groupby(['source_id']):
-            source_name = common.get_name_of_source(source_id, None).capitalize()
+            source_name = common.get_name_of_source(connection, country_id, country_name, source_id, None).capitalize()
+            logging.info(f"Source : {source_name}")
 
             df_temp = df_group.copy()
             df_temp['product_gtin'] = pd.to_numeric(df_temp['product_gtin'], errors="coerce")
@@ -185,7 +193,7 @@ def process_products():
             else:
                 # Case of direct
                 for supplier_name in df_source['supplier'].drop_duplicates():
-                    supplier_id = common.get_id_of_source(supplier_name)[1]
+                    supplier_id = common.get_id_of_source(connection, country_id, country_name, supplier_name)[1]
                     df_source.loc[(df_source['supplier'] == supplier_name), 'laboratoire_id'] = supplier_id
             df_source.loc[df_source['laboratoire_id'].isnull(), 'laboratoire_id'] = df_source['supplier']
 
@@ -289,6 +297,13 @@ def process_suppliers():
         writer.save()
         logging.debug(f'Aggregated file is generated !')
 
+        # Check if supplier already exists
+        query = text("""   select id as centrale_laboratoire_id, nom_laboratoire as supplier, centrale_id as source_id
+                            from centrale_laboratoire""")
+
+        df = pd.merge(df, pd.read_sql_query(query, connection), on=['source_id', 'supplier'], how='left')
+        df = df.loc[df['centrale_laboratoire_id'].isnull(), :]
+
         df = df[['source_id', 'supplier']]
         df.columns = ['centrale_id', 'nom_laboratoire']
         df.to_sql('centrale_laboratoire', engine, if_exists='append', index=False, chunksize=1000)
@@ -303,7 +318,6 @@ if __name__ == "__main__":
     # Getting args
     args = get_arguments()
     country_id = int(args.country)
-    country_name = common.get_name_of_country(country_id)
     debug = args.debug
 
     now = datetime.now().strftime('%Y%m%d%H%M%S')
@@ -331,6 +345,8 @@ if __name__ == "__main__":
         logging.debug('Connecting to the PostgreSQL database...')
         engine = create_engine(URL(**params_db), echo=False)
         connection = engine.connect()
+
+        country_name = common.get_name_of_country(connection, country_id)
 
         # Products
         process_products()

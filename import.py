@@ -7,16 +7,16 @@
 
 
 import argparse
-from datetime import datetime
-import os
-import pandas as pd
 import glob
-import numpy as np
-from openpyxl import load_workbook
-from openpyxl import Workbook
-from openpyxl.utils.dataframe import dataframe_to_rows
-import psycopg2
+import os
 import shutil
+from datetime import datetime
+
+import pandas as pd
+import psycopg2
+from openpyxl import Workbook
+from openpyxl import load_workbook
+from openpyxl.utils.dataframe import dataframe_to_rows
 from sqlalchemy import create_engine
 from sqlalchemy.engine.url import URL
 from sqlalchemy.sql import text
@@ -330,25 +330,6 @@ def create_excel_file(filename, df, append):
 
 
 if __name__ == "__main__":
-    print(f'** Processing new products **')
-
-    # Getting args
-    args = getArguments()
-    country_id = int(args.country)
-    country_name = common.get_name_of_country(country_id)
-
-    now = datetime.now().strftime('%Y%m%d')
-
-    initDir = './fichiers/nouveaux/' + country_name + "/"
-    workDir = './encours/nouveaux/' + country_name + "/"
-    historicDir = './historiques/nouveaux/' + country_name + "/" + now + "/"
-    logDir = './logs/nouveaux/' + country_name + "/" + now + "/"
-
-    # Create directories if not exist
-    os.makedirs(workDir, exist_ok=True)
-    os.makedirs(historicDir, exist_ok=True)
-    os.makedirs(logDir, exist_ok=True)
-
     try:
         # Reading parameters of database
         params = config(section="postgresql")
@@ -357,6 +338,25 @@ if __name__ == "__main__":
         print('Connecting to the PostgreSQL database...')
         engine = create_engine(URL(**params), echo=False)
         connection = engine.connect()
+
+        print(f'** Processing new products **')
+
+        # Getting args
+        args = getArguments()
+        country_id = int(args.country)
+        country_name = common.get_name_of_country(connection, country_id)
+
+        now = datetime.now().strftime('%Y%m%d')
+
+        initDir = './fichiers/nouveaux/' + country_name + "/"
+        workDir = './encours/nouveaux/' + country_name + "/"
+        historicDir = './historiques/nouveaux/' + country_name + "/" + now + "/"
+        logDir = './logs/nouveaux/' + country_name + "/" + now + "/"
+
+        # Create directories if not exist
+        os.makedirs(workDir, exist_ok=True)
+        os.makedirs(historicDir, exist_ok=True)
+        os.makedirs(logDir, exist_ok=True)
 
         # Create empty logs dataframes
         df_logs = pd.DataFrame(columns=['Fichier', 'ID Produit', 'Type', 'Description'])
