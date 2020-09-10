@@ -72,7 +72,10 @@ def process_products():
                                          'Code_Longimpex', 'Dénomination_Longimpex', 'Tarif_Longimpex',
                                          'Code_Direct', 'Dénomination_Direct', 'Tarif_Direct',
                                          'Code_Cedivet', 'Dénomination_Cedivet', 'Tarif_Cedivet',
-                                         'Code_Covetrus', 'Dénomination_Covetrus', 'Tarif_Covetrus'])
+                                         'Code_Covetrus', 'Dénomination_Covetrus', 'Tarif_Covetrus',
+                                         'Code_Apoex', 'Dénomination_Apoex', 'Tarif_Apoex',
+                                         'Code_Kruuse', 'Dénomination_Kruuse', 'Tarif_Kruuse',
+                                         'Code_Apotek1', 'Dénomination_Apotek1', 'Tarif_Apotek1'])
 
         # Search existing products in database
         query_products = text("""

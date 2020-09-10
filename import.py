@@ -316,6 +316,15 @@ def process():
     # Insert Covetrus codes
     insert_central_codes(df, 13, 'Covetrus')
 
+    # Insert Apoex codes
+    insert_central_codes(df, 15, 'Apoex')
+
+    # Insert Kruuse codes
+    insert_central_codes(df, 16, 'Kruuse')
+
+    # Insert Apotek1 codes
+    insert_central_codes(df, 17, 'Apotek1')
+
 
 def create_excel_file(filename, df, append):
     if append:
@@ -380,7 +389,8 @@ if __name__ == "__main__":
                 count_of_upd_products = 0
                 count_of_centrals_codes = {"Alcyon": 0, "Centravet": 0, "Coveto": 0, "Alibon": 0, "Vetapro": 0,
                                            "Vetys": 0, "Hippocampe": 0, "Agripharm": 0, "Elvetis": 0, "Longimpex": 0,
-                                           "Direct": 0, "Cedivet": 0, "Covetrus": 0}
+                                           "Direct": 0, "Cedivet": 0, "Covetrus": 0, "Apoex": 0, "Kruuse": 0,
+                                           "Apotek1": 0}
                 # Read Excel file
                 df_init = pd.read_excel(workDir + os.path.basename(f))
                 # Process file

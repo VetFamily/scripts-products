@@ -132,7 +132,10 @@ def process_products():
                                          'Code_Longimpex', 'Dénomination_Longimpex', 'Tarif_Longimpex',
                                          'Code_Direct', 'Dénomination_Direct', 'Tarif_Direct',
                                          'Code_Cedivet', 'Dénomination_Cedivet', 'Tarif_Cedivet',
-                                         'Code_Covetrus', 'Dénomination_Covetrus', 'Tarif_Covetrus'])
+                                         'Code_Covetrus', 'Dénomination_Covetrus', 'Tarif_Covetrus',
+                                         'Code_Apoex', 'Dénomination_Apoex', 'Tarif_Apoex',
+                                         'Code_Kruuse', 'Dénomination_Kruuse', 'Tarif_Kruuse',
+                                         'Code_Apotek1', 'Dénomination_Apotek1', 'Tarif_Apotek1'])
 
         # Search existing products in database
         query_products = text("""
@@ -179,6 +182,8 @@ def process_products():
             df_source['types'] = np.nan
             df_source['especes'] = np.nan
             df_source['prix_unitaire'] = np.nan
+
+            df['supplier'] = df['supplier'].dropna().apply(lambda x: x.strip())
 
             # Laboratories
             if source_id != constant.SOURCE_DIRECT_ID:
@@ -244,7 +249,7 @@ def process_products():
         worksheet = writer.sheets['Sheet 1']
         red_format = workbook.add_format()
         red_format.set_bg_color('red')
-        for col in ['R', 'U', 'X', 'AA', 'AD', 'AG', 'AJ', 'AM', 'AP', 'AS', 'AV', 'AY', 'BB']:
+        for col in ['L', 'O', 'R', 'U', 'X', 'AA', 'AD', 'AG', 'AJ', 'AM', 'AP', 'AS', 'AV', 'AY', 'BB', 'BE']:
             worksheet.conditional_format(col + '2:' + col + str(len(df_final.index)),
                                          {'type': 'duplicate', 'format': red_format})
         writer.save()
@@ -296,6 +301,8 @@ def process_suppliers():
         df.to_excel(writer, index=False)
         writer.save()
         logging.debug(f'Aggregated file is generated !')
+
+        df['supplier'] = df['supplier'].dropna().apply(lambda x: x.strip())
 
         # Check if supplier already exists
         query = text("""   select id as centrale_laboratoire_id, nom_laboratoire as supplier, centrale_id as source_id
