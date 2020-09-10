@@ -189,6 +189,7 @@ def insert_central_codes(df, cent_id, cent_name):
     df_temp_new_cp = df_temp_new[['produit_id', 'code_produit']]
     df_temp_new_cp.insert(0, 'centrale_id', cent_id)
     df_temp_new_cp.insert(0, 'country_id', country_id)
+    df_temp_new_cp = df_temp_new_cp.drop_duplicates()
     df_temp_new_cp.to_sql('centrale_produit', engine, if_exists='append', index=False, chunksize=1000)
     count += len(df_temp_new_cp.index)
 
@@ -201,6 +202,7 @@ def insert_central_codes(df, cent_id, cent_name):
         # Insert into centrale_produit_denominations
         df_temp_new_cpd = df_temp_new[['centrale_produit_id', 'nom']]
         df_temp_new_cpd.insert(0, 'date_creation', date)
+        df_temp_new_cpd = df_temp_new_cpd.drop_duplicates()
         df_temp_new_cpd.to_sql('centrale_produit_denominations', engine, if_exists='append', index=False,
                                chunksize=1000)
 
