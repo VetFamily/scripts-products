@@ -82,7 +82,7 @@ def get_id_of_source(connection, country_id, country_name, source_name):
 
     if country_id is not None:
         params['countryId'] = country_id
-        query = query + """and esf.srcf_country_id = :countryId """
+        query = query + """and sf.srcf_country_id = :countryId """
 
     if country_name is not None:
         params['countryName'] = country_name

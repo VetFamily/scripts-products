@@ -4,8 +4,7 @@
 # pip3 install SQLAlchemy
 # pip3 install openpyxl
 # pip3 install xlrd
-
-
+import argparse
 from datetime import datetime
 import os
 import pandas as pd
@@ -20,12 +19,21 @@ from sqlalchemy.engine.url import URL
 from sqlalchemy.sql import text
 
 from config import config
+from src.common import common
+
+
+def getArguments():
+    parser = argparse.ArgumentParser(description='Lancement du traitement du fichier de valorisations Vetapro')
+    # parser.add_argument('-o', '--output', help='Output file name', default='stdout')
+    required_args = parser.add_argument_group('required named arguments')
+    required_args.add_argument('-c', '--country', help='ID of country', required=True)
+    return parser.parse_args()
 
 
 def process():
     global df_logs
 
-    clients = {"bourgelat": 0, "vetoavenir": 0, "vetapro": 0, "vetapharma": 0, "vetharmonie": 0, "cristal": 0,
+    clients = {"bourgelat": 0, "vetoavenir": 0, "vetapharma": 0, "vetharmonie": 0, "cristal": 0,
                "symbioveto": 0, "clubvet": 0, "vetodistribution": 0}
 
     # Read Excel file
@@ -36,8 +44,9 @@ def process():
     # Add central code IDs
     query_cp = text("""
                 SELECT id as centrale_produit_id, centrale_id, code_produit, produit_id
-                FROM centrale_produit""")
-    df_cp = pd.read_sql_query(query_cp, connection)
+                FROM centrale_produit
+                WHERE country_id = :countryId""")
+    df_cp = pd.read_sql_query(query_cp, connection, params={"countryId": country_id})
     df = pd.merge(df, df_cp, on=['centrale_id', 'code_produit'], how='left')
 
     for index, row in df.iterrows():
@@ -109,7 +118,7 @@ def process():
             df_logs = df_logs.append(
                 {'centrale_id': cent_id, 'code_produit': product_code, 'produit_id_ancien': old_product,
                  'produit_id_nouveau': new_product, 'commentaire': 'OK', 'bourgelat': clients['bourgelat'],
-                 'vetoavenir': clients['vetoavenir'], 'vetapro': clients['vetapro'],
+                 'vetoavenir': clients['vetoavenir'], """'vetapro': clients['vetapro'],"""
                  'vetapharma': clients['vetapharma'], 'vetharmonie': clients['vetharmonie'],
                  'cristal': clients['cristal'], 'symbioveto': clients['symbioveto'], 'clubvet': clients['clubvet'],
                  'vetodistribution': clients['vetodistribution']},
@@ -129,17 +138,6 @@ def create_excel_file(filename, df, append):
 
 
 if __name__ == "__main__":
-    print(f'** Processing new products **')
-
-    initDir = './fichiers/doublons/'
-    workDir = './encours/doublons/'
-    historicDir = './historiques/doublons/' + datetime.now().strftime('%Y%m%d') + "/"
-    logDir = './logs/doublons/' + datetime.now().strftime('%Y%m%d') + "/"
-
-    # Create directories if not exist
-    os.makedirs(workDir, exist_ok=True)
-    os.makedirs(historicDir, exist_ok=True)
-
     try:
         # Reading parameters of database
         params = config(section="postgresql")
@@ -149,10 +147,30 @@ if __name__ == "__main__":
         engine = create_engine(URL(**params), echo=False)
         connection = engine.connect()
 
+        print(f'** Processing new products **')
+
+        # Getting args
+        args = getArguments()
+        country_id = int(args.country)
+        country_name = common.get_name_of_country(connection, country_id)
+
+        now = datetime.now().strftime('%Y%m%d')
+
+        initDir = './fichiers/doublons/' + country_name + "/"
+        workDir = './encours/doublons/' + country_name + "/"
+        historicDir = './historiques/doublons/' + country_name + "/" + now + "/"
+        logDir = './logs/doublons/' + country_name + "/" + now + "/"
+
+        # Create directories if not exist
+        os.makedirs(workDir, exist_ok=True)
+        os.makedirs(historicDir, exist_ok=True)
+        os.makedirs(logDir, exist_ok=True)
+
         # Create empty logs dataframes
         df_logs = pd.DataFrame(columns=['centrale_id', 'code_produit', 'produit_id_ancien', 'produit_id_nouveau',
-                                        'commentaire', 'bourgelat', 'vetoavenir', 'vetapro', 'vetapharma',
-                                        'vetharmonie', 'cristal', 'symbioveto', 'clubvet', 'vetodistribution'])
+                                        'commentaire', 'bourgelat', 'vetoavenir', 'vetapharma',
+                                        'vetharmonie', 'cristal', 'symbioveto', 'clubvet', 'vetodistribution',
+                                        'vetfamily'])
 
         for f in glob.glob(r'' + initDir + '/*.[xX][lL][sS][xX]'):
             print(f'Processing file "{os.path.basename(f)}" ...')

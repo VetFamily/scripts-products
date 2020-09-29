@@ -53,6 +53,7 @@ def insert_source_code(df, source_id):
     df_temp_new_cp.drop_duplicates(inplace=True)
     df_temp_new_cp.insert(0, 'centrale_id', source_id)
     df_temp_new_cp.insert(0, 'country_id', country_id)
+    df_temp_new_cp = df_temp_new_cp.drop_duplicates()
     df_temp_new_cp.to_sql('centrale_produit', engine, if_exists='append', index=False, chunksize=1000)
     logging.debug(f"Table centrale_produit : {len(df_temp_new_cp.index)} elements created")
 
@@ -68,6 +69,7 @@ def insert_source_code(df, source_id):
         df_temp_new_cpd.drop_duplicates(inplace=True)
         df_temp_new_cpd.columns = ['centrale_produit_id', 'nom']
         df_temp_new_cpd.insert(0, 'date_creation', date)
+        df_temp_new_cpd = df_temp_new_cpd.drop_duplicates()
         df_temp_new_cpd.to_sql('centrale_produit_denominations', engine, if_exists='append', index=False,
                                chunksize=1000)
         logging.debug(f"Table centrale_produit_denominations : {len(df_temp_new_cpd.index)} elements created")

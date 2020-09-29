@@ -227,6 +227,7 @@ def insert_product_country(df):
         df_products = df_products[['produit_id']]
         df_products.rename(columns={'produit_id': 'product_id'}, inplace=True)
         df_products.insert(0, 'country_id', country_id)
+        df_products = df_products.drop_duplicates()
         df_products.to_sql('product_country', engine, if_exists='append', index=False, chunksize=1000)
 
     del df_products, df_tmp
