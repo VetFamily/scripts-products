@@ -75,7 +75,12 @@ def process_products():
                                          'Code_Covetrus', 'Dénomination_Covetrus', 'Tarif_Covetrus',
                                          'Code_Apoex', 'Dénomination_Apoex', 'Tarif_Apoex',
                                          'Code_Kruuse', 'Dénomination_Kruuse', 'Tarif_Kruuse',
-                                         'Code_Apotek1', 'Dénomination_Apotek1', 'Tarif_Apotek1'])
+                                         'Code_Apotek1', 'Dénomination_Apotek1', 'Tarif_Apotek1',
+                                         'Code_Cirrina', 'Dénomination_Cirrina', 'Tarif_Cirrina',
+                                         'Condition_commerciale_Cirrina',
+                                         'Code_Serviphar', 'Dénomination_Serviphar', 'Tarif_Serviphar',
+                                         'Condition_commerciale_Serviphar',
+                                         'Code_Soleomed', 'Dénomination_Soleomed', 'Tarif_Soleomed'])
 
         # Search existing products in database
         query_products = text("""
@@ -118,8 +123,8 @@ def process_products():
                     cent_id = 7
                 elif cent_name == 'Agripharm':
                     cent_id = 8
-                    for x in range(len(df_file.columns), 25):
-                        df_file.insert(x, 'empty', np.nan)
+                    for c in range(len(df_file.columns), 25):
+                        df_file.insert(c, 'empty', np.nan)
                 elif cent_name == 'Elvetis':
                     cent_id = 9
                 elif cent_name == 'Longimpex':

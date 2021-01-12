@@ -12,6 +12,7 @@ import os
 import shutil
 from datetime import datetime
 
+import numpy as np
 import pandas as pd
 import psycopg2
 from openpyxl import Workbook
@@ -80,7 +81,7 @@ def insert_types(df):
         df_types = df_types.reset_index()[[0, 'produit_id']]
         df_types.columns = ['type_id', 'produit_id']
         df_types = df_types.replace(
-            {'type_id': {"Aliment": 1, "Antibiotique": 2, "Divers": 3, "Matériel": 4, "Médicament": 5}})
+            {'type_id': {"Aliment": 1, "Antibiotique": 2, "Divers": 3, "Matériel": 4, "Médicament": 5, "Biocide": 6}})
         df_types = df_types.drop_duplicates()
         df_types.to_sql('produit_type', engine, if_exists='append', index=False, chunksize=1000)
         count_of_types = len(df_types.index)
@@ -154,21 +155,36 @@ def insert_central_codes(df, cent_id, cent_name):
     date = pd.to_datetime("2016-01-01", format='%Y-%m-%d', errors='coerce')
 
     df_temp = df[df['Code_' + cent_name].notnull()].copy()
-    df_temp.drop(df_temp.columns.difference(
-        ['produit_id', 'Code_' + cent_name, 'Dénomination_' + cent_name, 'Tarif_' + cent_name]), axis=1, inplace=True)
-    df_temp.columns = ['code_produit', 'nom', 'prix_unitaire_hors_promo', 'produit_id']
+    if cent_id in [18, 19]:
+        df_temp.drop(df_temp.columns.difference(
+            ['produit_id', 'Code_' + cent_name, 'Dénomination_' + cent_name, 'Tarif_' + cent_name,
+             'Condition_commerciale_' + cent_name]), axis=1, inplace=True)
+        df_temp.columns = [
+            'code_produit', 'nom', 'prix_unitaire_hors_promo', 'cirrina_pricing_condition_id', 'produit_id']
+    else:
+        df_temp.drop(df_temp.columns.difference(
+            ['produit_id', 'Code_' + cent_name, 'Dénomination_' + cent_name, 'Tarif_' + cent_name]), axis=1,
+                     inplace=True)
+        df_temp['cirrina_pricing_condition_id'] = np.nan
+        df_temp.columns = ['code_produit', 'nom', 'prix_unitaire_hors_promo', 'produit_id',
+                           'cirrina_pricing_condition_id']
     df_temp['code_produit'] = df_temp['code_produit'].dropna().apply(lambda x: str(x))
     df_temp['nom'] = df_temp['nom'].dropna().apply(lambda x: str(x))
+    df_temp['cirrina_pricing_condition_id'] = pd.to_numeric(df_temp['cirrina_pricing_condition_id'])
 
     query_cp = text("""
-                        SELECT id as centrale_produit_id, code_produit
+                        SELECT id as centrale_produit_id, code_produit, cirrina_pricing_condition_id
                         FROM centrale_produit
                         WHERE centrale_id = :sourceId
                         AND country_id = :countryId
                                                         """)
-    df_temp = pd.merge(df_temp,
-                       pd.read_sql_query(query_cp, connection, params={'sourceId': cent_id, 'countryId': country_id}),
-                       on='code_produit', how='left')
+    df_cp = pd.read_sql_query(query_cp, connection, params={'sourceId': cent_id, 'countryId': country_id})
+    df_cp['cirrina_pricing_condition_id'] = pd.to_numeric(df_cp['cirrina_pricing_condition_id'])
+    df_temp = pd.merge(df_temp, df_cp, on=['code_produit', 'cirrina_pricing_condition_id'], how='left')
+    del df_cp
+
+    if country_id != 1:
+        insert_product_country_label(df_temp, False)
 
     df_temp_upd = df_temp.loc[df_temp['centrale_produit_id'].notnull(), :].copy()
 
@@ -186,7 +202,7 @@ def insert_central_codes(df, cent_id, cent_name):
     df_temp_new = df_temp.loc[df_temp['centrale_produit_id'].isnull(), :].copy()
 
     # Insert into centrale_produit
-    df_temp_new_cp = df_temp_new[['produit_id', 'code_produit']]
+    df_temp_new_cp = df_temp_new[['produit_id', 'code_produit', 'cirrina_pricing_condition_id']]
     df_temp_new_cp.insert(0, 'centrale_id', cent_id)
     df_temp_new_cp.insert(0, 'country_id', country_id)
     df_temp_new_cp = df_temp_new_cp.drop_duplicates()
@@ -196,7 +212,7 @@ def insert_central_codes(df, cent_id, cent_name):
     df_temp_new = df_temp_new.drop('centrale_produit_id', axis=1)
     df_temp_new = pd.merge(df_temp_new, pd.read_sql_query(query_cp, connection,
                                                           params={'sourceId': cent_id, 'countryId': country_id}),
-                           on='code_produit', how='left')
+                           on=['code_produit', 'cirrina_pricing_condition_id'], how='left')
 
     if len(df_temp_new.index) > 0:
         # Insert into centrale_produit_denominations
@@ -233,13 +249,67 @@ def insert_product_country(df):
     del df_products, df_tmp
 
 
+def insert_product_country_label(df, is_france):
+    query = text("""
+                        select distinct l.code as label_code, language_id
+                        from label l
+                        join country c on c.default_language_id = l.language_id
+                        where l.code like 'PROD%'
+                """)
+    df_tmp = pd.read_sql_query(query, connection, params={'countryId': country_id})
+
+    df_products_labels = df.copy()
+    if len(df_products_labels.index) > 0:
+        query_language = text("""select default_language_id from country where id = :countryId""")
+        language_id = connection.execute(query_language, countryId=country_id).first()[0]
+
+        if is_france:
+            product_name = 'Dénomination'
+            product_packaging = 'Conditionnement'
+            df_products_labels.loc[df_products_labels[product_packaging].isnull(), product_packaging] = ''
+        else:
+            product_name = 'nom'
+            product_packaging = 'product_packaging'
+            df_products_labels[product_packaging] = ''
+
+        df_products_labels['name_label'] = df_products_labels.agg(lambda x: f"PROD{str(int(x['produit_id']))}N", axis=1)
+        df_products_labels['packaging_label'] = df_products_labels.agg(lambda x: f"PROD{str(int(x['produit_id']))}P",
+                                                                       axis=1)
+        df_products_labels.insert(0, 'language_id', language_id)
+
+        # Label of name of product
+        df_products_labels_name = df_products_labels.loc[(~df_products_labels['name_label'].isin(df_tmp['label_code']) &
+                                                          df_products_labels[product_name].notnull()), :]
+
+        if len(df_products_labels_name.index) > 0:
+            df_products_labels_name = df_products_labels_name[['name_label', product_name, 'language_id']]
+            df_products_labels_name.drop_duplicates(subset='name_label', keep='first', inplace=True)
+            df_products_labels_name.rename(columns={'name_label': 'code', product_name: 'value'}, inplace=True)
+            df_products_labels_name = df_products_labels_name.drop_duplicates()
+            df_products_labels_name.to_sql('label', engine, if_exists='append', index=False, chunksize=1000)
+
+        # Label of packaging of product
+        df_products_labels_pack = df_products_labels.loc[(~df_products_labels['packaging_label'].isin(
+            df_tmp['label_code']) & df_products_labels[product_packaging].notnull()), :]
+
+        if len(df_products_labels_pack.index) > 0:
+            df_products_labels_pack = df_products_labels_pack[['packaging_label', product_packaging, 'language_id']]
+            df_products_labels_pack.drop_duplicates(subset='packaging_label', keep='first', inplace=True)
+            df_products_labels_pack.rename(columns={'packaging_label': 'code', product_packaging: 'value'}, inplace=True)
+            df_products_labels_pack = df_products_labels_pack.drop_duplicates()
+            df_products_labels_pack.to_sql('label', engine, if_exists='append', index=False, chunksize=1000)
+
+    del df_products_labels, df_tmp
+
+
 def process():
     df = df_init.where(pd.notnull(df_init), None)
-    df['Obsolète'] = df['Obsolète'].astype(bool)
-    df['Invisible'] = df['Invisible'].astype(bool)
+    df['Obsolète'] = df['Obsolète'].apply(lambda x: True if x == 'True' else False)
+    df['Invisible'] = df['Invisible'].apply(lambda x: True if x == 'True' else False)
     df['Id'] = pd.to_numeric(df['Id'])
+    df['Laboratoire'] = pd.to_numeric(df['Laboratoire'])
     df['Code GTIN'] = df['Code GTIN'].dropna().apply(lambda x: str(int(x)))
-    df['Autre code GTIN'] = df['Autre code GTIN'].dropna().apply(lambda x: str(int(x)) if isinstance(x, int) else str(x))
+    df['Autre code GTIN'] = df['Autre code GTIN'].dropna().apply(lambda x: str(int(x)) if type(x) is float else str(x))
     df['Dénomination'] = df['Dénomination'].dropna().apply(lambda x: str(x))
     df['Conditionnement'] = df['Conditionnement'].dropna().apply(lambda x: str(x))
 
@@ -251,6 +321,9 @@ def process():
                 SELECT id as produit_id, denomination, conditionnement, laboratoire_id, obsolete, invisible, code_gtin 
                 FROM produits""")
     df_products = pd.read_sql_query(query_products, connection)
+    df_products['produit_id'] = pd.to_numeric(df_products['produit_id'])
+    df_products['laboratoire_id'] = pd.to_numeric(df_products['laboratoire_id'])
+
     temp = pd.merge(df[pd.isnull(df['Id'])], df_products,
                     left_on=['Code GTIN', 'Dénomination', 'Conditionnement', 'Laboratoire', 'Obsolète', 'Invisible'],
                     right_on=['code_gtin', 'denomination', 'conditionnement', 'laboratoire_id', 'obsolete',
@@ -266,10 +339,16 @@ def process():
     # Add country ID for products
     insert_product_country(df)
 
-    # Remove .0 from codes columns
+    if country_id == 1:
+        insert_product_country_label(df, True)
+
+    # Remove .0 from codes columns (not for Cirrina and Serviphar)
     for col in df.columns:
         if 'Code_' in col:
-            df[col] = df[col].dropna().apply(lambda x: str(int(x)) if type(x) is float else x)
+            if col in ['Code_Cirrina', 'Code_Serviphar']:
+                df[col] = df[col].dropna().apply(lambda x: str(x))
+            else:
+                df[col] = df[col].dropna().apply(lambda x: str(int(x)) if type(x) is float else x)
 
     # Insert types of new products
     insert_types(df)
@@ -328,6 +407,15 @@ def process():
     # Insert Apotek1 codes
     insert_central_codes(df, 17, 'Apotek1')
 
+    # Insert Cirrina codes
+    insert_central_codes(df, 18, 'Cirrina')
+
+    # Insert Serviphar codes
+    insert_central_codes(df, 19, 'Serviphar')
+
+    # Insert Soleomed codes
+    insert_central_codes(df, 20, 'Soleomed')
+
 
 def create_excel_file(filename, df, append):
     if append:
@@ -384,18 +472,18 @@ if __name__ == "__main__":
             # Move file to working directory
             shutil.move(f, workDir + os.path.basename(f))
 
+            # Initialize counts
+            count_of_new_products = 0
+            count_of_types = 0
+            count_of_species = 0
+            count_of_upd_products = 0
+            count_of_centrals_codes = {"Alcyon": 0, "Centravet": 0, "Coveto": 0, "Alibon": 0, "Vetapro": 0,
+                                       "Vetys": 0, "Hippocampe": 0, "Agripharm": 0, "Elvetis": 0, "Longimpex": 0,
+                                       "Direct": 0, "Cedivet": 0, "Covetrus": 0, "Apoex": 0, "Kruuse": 0,
+                                       "Apotek1": 0, "Cirrina": 0, "Serviphar": 0, "Soleomed": 0}
             if os.stat(workDir + os.path.basename(f)).st_size > 0:
-                # Initialize counts
-                count_of_new_products = 0
-                count_of_types = 0
-                count_of_species = 0
-                count_of_upd_products = 0
-                count_of_centrals_codes = {"Alcyon": 0, "Centravet": 0, "Coveto": 0, "Alibon": 0, "Vetapro": 0,
-                                           "Vetys": 0, "Hippocampe": 0, "Agripharm": 0, "Elvetis": 0, "Longimpex": 0,
-                                           "Direct": 0, "Cedivet": 0, "Covetrus": 0, "Apoex": 0, "Kruuse": 0,
-                                           "Apotek1": 0}
                 # Read Excel file
-                df_init = pd.read_excel(workDir + os.path.basename(f))
+                df_init = pd.read_excel(workDir + os.path.basename(f), dtype=str)
                 # Process file
                 process()
             else:

@@ -19,7 +19,7 @@ from sqlalchemy.engine.url import URL
 from sqlalchemy.sql import text
 
 from config import config
-from src.common import common
+from src.common import common, constant
 
 
 def getArguments():
@@ -33,8 +33,11 @@ def getArguments():
 def process():
     global df_logs
 
-    clients = {"bourgelat": 0, "vetoavenir": 0, "vetapharma": 0, "vetharmonie": 0, "cristal": 0,
-               "symbioveto": 0, "clubvet": 0, "vetodistribution": 0}
+    if country_id == constant.COUNTRY_FRANCE_ID:
+        clients = {"bourgelat": 0, "vetoavenir": 0, "vetapharma": 0, "vetharmonie": 0, "cristal": 0,
+                   "symbioveto": 0, "clubvet": 0, "vetodistribution": 0, "vetfamily": 0}
+    else:
+        clients = {"vetfamily": 0}
 
     # Read Excel file
     df = pd.read_excel(workDir + os.path.basename(f))
@@ -78,26 +81,40 @@ def process():
                     # Reading parameters of database
                     params_client = config(filename='config_clients.ini', section=i)
 
-                except (Exception, psycopg2.Error) as error_client:
-                    print(f"Error : no section for {i}")
-                    continue
-
-                try:
                     # Connecting to the PostgreSQL server
                     print('Connecting to the PostgreSQL database...')
                     engine_client = create_engine(URL(**params_client), echo=False)
                     connection_client = engine_client.connect()
 
+                except (Exception, psycopg2.Error) as error_client:
+                    print(error_client)
+                    print(f"Error : no section for {i}")
+                    continue
+
+                try:
                     # Searching purchases for old central product
-                    sel_purchases = text("""
-                                            SELECT distinct a.id 
-                                            FROM achats a
-                                            WHERE a.centrale_produit_id = :id
-                                                                            """)
-                    df_purchases = pd.read_sql_query(sel_purchases, connection_client, params={'id': cent_prod_id})
-                    df_purchases['id'] = pd.to_numeric(df_purchases['id'])
-                    list_of_purchases = df_purchases['id'].drop_duplicates().tolist()
-                    upd_purchases = text(""" UPDATE achats SET produit_id = :prodId WHERE id IN :ids""")
+                    if country_id == constant.COUNTRY_FRANCE_ID:
+                        sel_purchases = text("""
+                                                SELECT distinct a.id 
+                                                FROM achats a
+                                                WHERE a.centrale_produit_id = :id
+                                                                                """)
+                        upd_purchases = text(""" UPDATE achats SET produit_id = :prodId WHERE id IN :ids""")
+                        df_purchases = pd.read_sql_query(sel_purchases, connection_client, params={'id': cent_prod_id})
+                        df_purchases['id'] = pd.to_numeric(df_purchases['id'])
+                        list_of_purchases = df_purchases['id'].drop_duplicates().tolist()
+                    else:
+                        sel_purchases = text("""
+                                                SELECT distinct purr_id 
+                                                FROM ed_purchases_ref
+                                                WHERE purr_central_product_id = :id
+                                                                                """)
+                        upd_purchases = text(
+                            """ UPDATE ed_purchases_ref SET purr_product_id = :prodId WHERE purr_id IN :ids""")
+                        df_purchases = pd.read_sql_query(sel_purchases, connection_client, params={'id': cent_prod_id})
+                        df_purchases['purr_id'] = pd.to_numeric(df_purchases['purr_id'])
+                        list_of_purchases = df_purchases['purr_id'].drop_duplicates().tolist()
+
                     if len(list_of_purchases) > 0:
                         res = connection_client.execute(upd_purchases, prodId=new_product,
                                                         ids=(tuple(list_of_purchases)))
@@ -115,14 +132,20 @@ def process():
                         connection_client.close()
                         print(f"PostgreSQL connection {i} is closed")
 
-            df_logs = df_logs.append(
-                {'centrale_id': cent_id, 'code_produit': product_code, 'produit_id_ancien': old_product,
-                 'produit_id_nouveau': new_product, 'commentaire': 'OK', 'bourgelat': clients['bourgelat'],
-                 'vetoavenir': clients['vetoavenir'], """'vetapro': clients['vetapro'],"""
-                 'vetapharma': clients['vetapharma'], 'vetharmonie': clients['vetharmonie'],
-                 'cristal': clients['cristal'], 'symbioveto': clients['symbioveto'], 'clubvet': clients['clubvet'],
-                 'vetodistribution': clients['vetodistribution']},
-                ignore_index=True)
+            if country_id == constant.COUNTRY_FRANCE_ID:
+                df_logs = df_logs.append(
+                    {'centrale_id': cent_id, 'code_produit': product_code, 'produit_id_ancien': old_product,
+                     'produit_id_nouveau': new_product, 'commentaire': 'OK', 'bourgelat': clients['bourgelat'],
+                     'vetoavenir': clients['vetoavenir'], """'vetapro': clients['vetapro'],"""
+                     'vetapharma': clients['vetapharma'], 'vetharmonie': clients['vetharmonie'],
+                     'cristal': clients['cristal'], 'symbioveto': clients['symbioveto'], 'clubvet': clients['clubvet'],
+                     'vetodistribution': clients['vetodistribution'], 'vetfamily': clients['vetfamily']},
+                    ignore_index=True)
+            else:
+                df_logs = df_logs.append(
+                    {'centrale_id': cent_id, 'code_produit': product_code, 'produit_id_ancien': old_product,
+                     'produit_id_nouveau': new_product, 'commentaire': 'OK', 'vetfamily': clients['vetfamily']},
+                    ignore_index=True)
 
 
 def create_excel_file(filename, df, append):
@@ -167,10 +190,14 @@ if __name__ == "__main__":
         os.makedirs(logDir, exist_ok=True)
 
         # Create empty logs dataframes
-        df_logs = pd.DataFrame(columns=['centrale_id', 'code_produit', 'produit_id_ancien', 'produit_id_nouveau',
-                                        'commentaire', 'bourgelat', 'vetoavenir', 'vetapharma',
-                                        'vetharmonie', 'cristal', 'symbioveto', 'clubvet', 'vetodistribution',
-                                        'vetfamily'])
+        if country_id == constant.COUNTRY_FRANCE_ID:
+            df_logs = pd.DataFrame(columns=['centrale_id', 'code_produit', 'produit_id_ancien', 'produit_id_nouveau',
+                                            'commentaire', 'bourgelat', 'vetoavenir', 'vetapharma',
+                                            'vetharmonie', 'cristal', 'symbioveto', 'clubvet', 'vetodistribution',
+                                            'vetfamily'])
+        else:
+            df_logs = pd.DataFrame(columns=['centrale_id', 'code_produit', 'produit_id_ancien', 'produit_id_nouveau',
+                                            'commentaire', 'vetfamily'])
 
         for f in glob.glob(r'' + initDir + '/*.[xX][lL][sS][xX]'):
             print(f'Processing file "{os.path.basename(f)}" ...')

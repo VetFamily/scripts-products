@@ -38,18 +38,20 @@ def insert_source_code(df, source_id):
 
     df_source_tmp = df_source_tmp.drop(columns=['centrale_produit_id'])
     query_product_sources = text("""
-        select id as centrale_produit_id, code_produit as product_code
+        select id as centrale_produit_id, code_produit as product_code, cirrina_pricing_condition_id
         from centrale_produit
         where centrale_id = :sourceId 
         and country_id = :countryId""")
-    df_source_tmp = pd.merge(df_source_tmp, pd.read_sql_query(query_product_sources, connection,
-                                                              params={"sourceId": source_id, "countryId": country_id}),
-                             on=['product_code'], how='left')
+    df_tmp = pd.read_sql_query(query_product_sources, connection,
+                               params={"sourceId": source_id, "countryId": country_id})
+    df_tmp['cirrina_pricing_condition_id'] = pd.to_numeric(df['cirrina_pricing_condition_id'])
+    df_source_tmp = pd.merge(df_source_tmp, df_tmp, on=['product_code', 'cirrina_pricing_condition_id'], how='left')
     df_source_tmp = df_source_tmp.loc[df_source_tmp['centrale_produit_id'].isnull(), :]
+    del df_tmp
 
     # Insert into centrale_produit
-    df_temp_new_cp = df_source_tmp[['product_code']].copy()
-    df_temp_new_cp.columns = ['code_produit']
+    df_temp_new_cp = df_source_tmp[['product_code', 'cirrina_pricing_condition_id']].copy()
+    df_temp_new_cp.columns = ['code_produit', 'cirrina_pricing_condition_id']
     df_temp_new_cp.drop_duplicates(inplace=True)
     df_temp_new_cp.insert(0, 'centrale_id', source_id)
     df_temp_new_cp.insert(0, 'country_id', country_id)
@@ -61,7 +63,7 @@ def insert_source_code(df, source_id):
     df_source_tmp = df_source_tmp.drop(columns=['centrale_produit_id'])
     df_source_tmp = pd.merge(df_source_tmp, pd.read_sql_query(query_product_sources, connection,
                                                               params={"sourceId": source_id, "countryId": country_id}),
-                             on=['product_code'], how='left')
+                             on=['product_code', 'cirrina_pricing_condition_id'], how='left')
 
     if len(df_source_tmp.index) > 0:
         # Insert into centrale_produit_denominations
@@ -107,7 +109,7 @@ def process_products():
 
         logging.debug(f'Aggregate files...')
         for f in sorted(glob.glob(r'' + products_out_files_dir + '*.*')):
-            df = pd.concat([df, pd.read_excel(f)], axis=0, sort=False, ignore_index=True)
+            df = pd.concat([df, pd.read_excel(f, dtype=str)], axis=0, sort=False, ignore_index=True)
 
         # Save dataframe for logs
         writer = pd.ExcelWriter(
@@ -115,8 +117,13 @@ def process_products():
             engine='xlsxwriter')
         df.to_excel(writer, index=False)
         writer.save()
+        logging.debug(f'Aggregated file is generated !')
 
+        # Drop duplicates
         df.drop_duplicates(inplace=True)
+
+        # Ignore rows without product code
+        df = df[df['product_code'].notnull()]
 
         df_final = pd.DataFrame(columns=['Id', 'Dénomination_temp', 'Conditionnement_temp', 'Laboratoire_temp',
                                          'Obsolète_temp', 'Invisible_temp', 'ID classe thérapeutique_temp', 'Code GTIN',
@@ -137,7 +144,12 @@ def process_products():
                                          'Code_Covetrus', 'Dénomination_Covetrus', 'Tarif_Covetrus',
                                          'Code_Apoex', 'Dénomination_Apoex', 'Tarif_Apoex',
                                          'Code_Kruuse', 'Dénomination_Kruuse', 'Tarif_Kruuse',
-                                         'Code_Apotek1', 'Dénomination_Apotek1', 'Tarif_Apotek1'])
+                                         'Code_Apotek1', 'Dénomination_Apotek1', 'Tarif_Apotek1',
+                                         'Code_Cirrina', 'Dénomination_Cirrina', 'Tarif_Cirrina',
+                                         'Condition_commerciale_Cirrina',
+                                         'Code_Serviphar', 'Dénomination_Serviphar', 'Tarif_Serviphar',
+                                         'Condition_commerciale_Serviphar',
+                                         'Code_Soleomed', 'Dénomination_Soleomed', 'Tarif_Soleomed'])
 
         # Search existing products in database
         query_products = text("""
@@ -152,7 +164,7 @@ def process_products():
 
         # Search existing codes sources of products in database
         query_product_sources = text("""
-            select id as centrale_produit_id, code_produit, centrale_id
+            select id as centrale_produit_id, code_produit, centrale_id, cirrina_pricing_condition_id
             from centrale_produit
             where country_id = :countryId
             and produit_id is not null""")
@@ -166,6 +178,7 @@ def process_products():
         df_classes = pd.read_sql_query(query_classes, connection)
 
         for source_id, df_group in df.groupby(['source_id']):
+            source_id = int(source_id)
             source_name = common.get_name_of_source(connection, country_id, country_name, source_id, None).capitalize()
             logging.info(f"Source : {source_name}")
 
@@ -191,10 +204,11 @@ def process_products():
             if source_id != constant.SOURCE_DIRECT_ID:
                 # Search existing laboratories in database
                 query_labs = text("""
-                    select laboratoire_id, nom_laboratoire as laboratoire 
+                    select laboratoire_id, nom_laboratoire as laboratoire, cirrina_pricing_condition_id 
                     from centrale_laboratoire
                     where laboratoire_id is not null and centrale_id = :id""")
                 df_labs = pd.read_sql_query(query_labs, connection, params={'id': source_id})
+                df_labs['cirrina_pricing_condition_id'] = pd.to_numeric(df_labs['cirrina_pricing_condition_id'])
 
                 df_source = pd.merge(df_source, df_labs, left_on=['supplier'], right_on=['laboratoire'], how='left')
             else:
@@ -202,6 +216,7 @@ def process_products():
                 for supplier_name in df_source['supplier'].drop_duplicates():
                     supplier_id = common.get_id_of_source(connection, country_id, country_name, supplier_name)[1]
                     df_source.loc[(df_source['supplier'] == supplier_name), 'laboratoire_id'] = supplier_id
+                df_source['cirrina_pricing_condition_id'] = np.nan
             df_source.loc[df_source['laboratoire_id'].isnull(), 'laboratoire_id'] = df_source['supplier']
 
             # Therapeutic classes
@@ -216,26 +231,38 @@ def process_products():
             del temp
 
             # Check if source code already added
-            df_source["product_code"] = df_source["product_code"].dropna().apply(
-                lambda x: str(x) if type(x) is int else x)
+            if source_id in [18, 19]:
+                df_source["product_code"] = df_source["product_code"].dropna().apply(lambda x: str(x))
+            else:
+                df_source["product_code"] = df_source["product_code"].dropna().apply(
+                    lambda x: str(int(x)) if type(x) is float else str(x) if type(x) is int else x)
             df_source = pd.merge(df_source, df_product_sources.loc[(df_product_sources["centrale_id"] == source_id), :],
-                                 left_on=['product_code'], right_on=['code_produit'], how='left', indicator=True)
+                                 left_on=['product_code', 'cirrina_pricing_condition_id'],
+                                 right_on=['code_produit', 'cirrina_pricing_condition_id'],
+                                 how='left', indicator=True)
             df_source = df_source.loc[(df_source['_merge'] != "both"), :]
             df_source.drop(columns=['_merge'], inplace=True)
 
             # Insert source code in database
             insert_source_code(df_source, source_id)
 
-            df_source = df_source[
-                ['produit_id', 'denomination_temp', 'conditionnement_temp', 'laboratoire_id_temp', 'obsolete_temp',
-                 'invisible_temp', 'famille_therapeutique_id_temp', 'product_gtin', 'classe_therapeutique',
-                 'famille_therapeutique_id', 'denomination', 'conditionnement', 'laboratoire_id', 'obsolete',
-                 'invisible', 'types', 'especes', 'product_code', 'product_name', 'prix_unitaire']]
-            df_source.columns = ['Id', 'Dénomination_temp', 'Conditionnement_temp', 'Laboratoire_temp', 'Obsolète_temp',
-                                 'Invisible_temp', 'ID classe thérapeutique_temp', 'Code GTIN', 'Autre code GTIN',
-                                 'ID classe thérapeutique', 'Dénomination', 'Conditionnement', 'Laboratoire',
-                                 'Obsolète', 'Invisible', 'Types', 'Espèces', 'Code_' + source_name,
-                                 'Dénomination_' + source_name, 'Tarif_' + source_name]
+            columns = ['produit_id', 'denomination_temp', 'conditionnement_temp', 'laboratoire_id_temp',
+                       'obsolete_temp', 'invisible_temp', 'famille_therapeutique_id_temp', 'product_gtin',
+                       'classe_therapeutique', 'famille_therapeutique_id', 'denomination', 'conditionnement',
+                       'laboratoire_id', 'obsolete', 'invisible', 'types', 'especes', 'product_code', 'product_name',
+                       'prix_unitaire']
+            columns_name = ['Id', 'Dénomination_temp', 'Conditionnement_temp', 'Laboratoire_temp', 'Obsolète_temp',
+                            'Invisible_temp', 'ID classe thérapeutique_temp', 'Code GTIN', 'Autre code GTIN',
+                            'ID classe thérapeutique', 'Dénomination', 'Conditionnement', 'Laboratoire',
+                            'Obsolète', 'Invisible', 'Types', 'Espèces', 'Code_' + source_name,
+                            'Dénomination_' + source_name, 'Tarif_' + source_name]
+
+            if source_id in [18, 19]:
+                columns.append('cirrina_pricing_condition_id')
+                columns_name.append('Condition_commerciale_' + source_name)
+
+            df_source = df_source[columns]
+            df_source.columns = columns_name
 
             df_final = pd.concat([df_final, df_source.drop_duplicates()], axis=0, sort=False, ignore_index=True)
 
@@ -251,7 +278,8 @@ def process_products():
         worksheet = writer.sheets['Sheet 1']
         red_format = workbook.add_format()
         red_format.set_bg_color('red')
-        for col in ['L', 'O', 'R', 'U', 'X', 'AA', 'AD', 'AG', 'AJ', 'AM', 'AP', 'AS', 'AV', 'AY', 'BB', 'BE']:
+        for col in ['R', 'U', 'X', 'AA', 'AD', 'AG', 'AJ', 'AM', 'AP', 'AS', 'AV', 'AY', 'BB', 'BE', 'BH', 'BK', 'BN',
+                    'BR']:
             worksheet.conditional_format(col + '2:' + col + str(len(df_final.index)),
                                          {'type': 'duplicate', 'format': red_format})
         writer.save()
