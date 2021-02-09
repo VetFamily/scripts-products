@@ -61,9 +61,11 @@ def insert_source_code(df, source_id):
 
     # Search existing codes sources of products in database
     df_source_tmp = df_source_tmp.drop(columns=['centrale_produit_id'])
-    df_source_tmp = pd.merge(df_source_tmp, pd.read_sql_query(query_product_sources, connection,
-                                                              params={"sourceId": source_id, "countryId": country_id}),
-                             on=['product_code', 'cirrina_pricing_condition_id'], how='left')
+    df_tmp = pd.read_sql_query(query_product_sources, connection,
+                               params={"sourceId": source_id, "countryId": country_id})
+    df_tmp['cirrina_pricing_condition_id'] = pd.to_numeric(df_tmp['cirrina_pricing_condition_id'])
+    df_source_tmp = pd.merge(df_source_tmp, df_tmp, on=['product_code', 'cirrina_pricing_condition_id'], how='left')
+    del df_tmp
 
     if len(df_source_tmp.index) > 0:
         # Insert into centrale_produit_denominations
@@ -149,7 +151,8 @@ def process_products():
                                          'Condition_commerciale_Cirrina',
                                          'Code_Serviphar', 'Dénomination_Serviphar', 'Tarif_Serviphar',
                                          'Condition_commerciale_Serviphar',
-                                         'Code_Soleomed', 'Dénomination_Soleomed', 'Tarif_Soleomed'])
+                                         'Code_Soleomed', 'Dénomination_Soleomed', 'Tarif_Soleomed',
+                                         'Code_Veso', 'Dénomination_Veso', 'Tarif_Veso'])
 
         # Search existing products in database
         query_products = text("""
@@ -169,6 +172,8 @@ def process_products():
             where country_id = :countryId
             and produit_id is not null""")
         df_product_sources = pd.read_sql_query(query_product_sources, connection, params={"countryId": country_id})
+        df_product_sources['cirrina_pricing_condition_id'] = pd.to_numeric(
+            df_product_sources['cirrina_pricing_condition_id'])
 
         # Search existing therapeutic classes in database
         query_classes = text("""
@@ -198,7 +203,7 @@ def process_products():
             df_source['especes'] = np.nan
             df_source['prix_unitaire'] = np.nan
 
-            df['supplier'] = df['supplier'].dropna().apply(lambda x: x.strip())
+            df_source['supplier'] = df_source['supplier'].dropna().apply(lambda x: x.strip())
 
             # Laboratories
             if source_id != constant.SOURCE_DIRECT_ID:
@@ -217,7 +222,9 @@ def process_products():
                     supplier_id = common.get_id_of_source(connection, country_id, country_name, supplier_name)[1]
                     df_source.loc[(df_source['supplier'] == supplier_name), 'laboratoire_id'] = supplier_id
                 df_source['cirrina_pricing_condition_id'] = np.nan
+
             df_source.loc[df_source['laboratoire_id'].isnull(), 'laboratoire_id'] = df_source['supplier']
+            df_source['cirrina_pricing_condition_id'] = pd.to_numeric(df_source['cirrina_pricing_condition_id'])
 
             # Therapeutic classes
             if 'classe_therapeutique' not in df_source.columns:

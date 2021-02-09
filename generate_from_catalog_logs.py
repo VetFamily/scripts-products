@@ -80,7 +80,8 @@ def process_products():
                                          'Condition_commerciale_Cirrina',
                                          'Code_Serviphar', 'Dénomination_Serviphar', 'Tarif_Serviphar',
                                          'Condition_commerciale_Serviphar',
-                                         'Code_Soleomed', 'Dénomination_Soleomed', 'Tarif_Soleomed'])
+                                         'Code_Soleomed', 'Dénomination_Soleomed', 'Tarif_Soleomed',
+                                         'Code_Veso', 'Dénomination_Veso', 'Tarif_Veso'])
 
         # Search existing products in database
         query_products = text("""

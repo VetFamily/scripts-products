@@ -179,6 +179,7 @@ def insert_central_codes(df, cent_id, cent_name):
                         AND country_id = :countryId
                                                         """)
     df_cp = pd.read_sql_query(query_cp, connection, params={'sourceId': cent_id, 'countryId': country_id})
+    df_cp['code_produit'] = df_cp['code_produit'].dropna().apply(lambda x: str(x))
     df_cp['cirrina_pricing_condition_id'] = pd.to_numeric(df_cp['cirrina_pricing_condition_id'])
     df_temp = pd.merge(df_temp, df_cp, on=['code_produit', 'cirrina_pricing_condition_id'], how='left')
     del df_cp
@@ -210,9 +211,11 @@ def insert_central_codes(df, cent_id, cent_name):
     count += len(df_temp_new_cp.index)
 
     df_temp_new = df_temp_new.drop('centrale_produit_id', axis=1)
-    df_temp_new = pd.merge(df_temp_new, pd.read_sql_query(query_cp, connection,
-                                                          params={'sourceId': cent_id, 'countryId': country_id}),
-                           on=['code_produit', 'cirrina_pricing_condition_id'], how='left')
+    df_cp = pd.read_sql_query(query_cp, connection, params={'sourceId': cent_id, 'countryId': country_id})
+    df_cp['code_produit'] = df_cp['code_produit'].dropna().apply(lambda x: str(x))
+    df_cp['cirrina_pricing_condition_id'] = pd.to_numeric(df_cp['cirrina_pricing_condition_id'])
+    df_temp_new = pd.merge(df_temp_new, df_cp, on=['code_produit', 'cirrina_pricing_condition_id'], how='left')
+    del df_cp
 
     if len(df_temp_new.index) > 0:
         # Insert into centrale_produit_denominations
@@ -416,6 +419,9 @@ def process():
     # Insert Soleomed codes
     insert_central_codes(df, 20, 'Soleomed')
 
+    # Insert Veso codes
+    insert_central_codes(df, 21, 'Veso')
+
 
 def create_excel_file(filename, df, append):
     if append:
@@ -480,7 +486,7 @@ if __name__ == "__main__":
             count_of_centrals_codes = {"Alcyon": 0, "Centravet": 0, "Coveto": 0, "Alibon": 0, "Vetapro": 0,
                                        "Vetys": 0, "Hippocampe": 0, "Agripharm": 0, "Elvetis": 0, "Longimpex": 0,
                                        "Direct": 0, "Cedivet": 0, "Covetrus": 0, "Apoex": 0, "Kruuse": 0,
-                                       "Apotek1": 0, "Cirrina": 0, "Serviphar": 0, "Soleomed": 0}
+                                       "Apotek1": 0, "Cirrina": 0, "Serviphar": 0, "Soleomed": 0, "Veso": 0}
             if os.stat(workDir + os.path.basename(f)).st_size > 0:
                 # Read Excel file
                 df_init = pd.read_excel(workDir + os.path.basename(f), dtype=str)
