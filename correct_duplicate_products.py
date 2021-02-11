@@ -39,6 +39,14 @@ def process():
     else:
         clients = {"vetfamily": 0}
 
+    # Getting country of products
+    query = text("""
+                    select distinct product_id from product_country
+                    where country_id = :countryId
+                    """)
+    df_product_countries = pd.read_sql_query(query, connection, params={'countryId': country_id})
+    df_product_countries['product_id'] = pd.to_numeric(df_product_countries['product_id'])
+
     # Read Excel file
     df = pd.read_excel(workDir + os.path.basename(f))
     df.columns = ['centrale_id', 'code_produit', 'produit_id_ancien', 'produit_id_nouveau']
@@ -74,6 +82,17 @@ def process():
                                           'commentaire': 'Erreur de la mise à jour du centrale_produit'},
                                          ignore_index=True)
                 continue
+            # Insert country for product
+            if new_product not in df_product_countries['purr_source_clinic_id'].drop_duplicates().tolist():
+                ins_prod_country = text(
+                    """ INSERT INTO product_country (product_id, country_id) VALUES (:prodId, :countryId)""")
+            res_ins_prod_country = connection.execute(ins_prod_country, prodId=new_product, countryId=country_id)
+            df_product_countries.append({'product_id': new_product}, ignore_index=True)
+            if res_ins_prod_country.rowcount == 0:
+                df_logs = df_logs.append({'centrale_id': cent_id, 'code_produit': product_code,
+                                          'produit_id_ancien': old_product, 'produit_id_nouveau': new_product,
+                                          'commentaire': 'Erreur de l\'ajout du pays pour le produit'},
+                                         ignore_index=True)
 
             # For each client : update purchases
             for i in clients:
@@ -93,34 +112,19 @@ def process():
 
                 try:
                     # Searching purchases for old central product
-                    if country_id == constant.COUNTRY_FRANCE_ID:
-                        sel_purchases = text("""
-                                                SELECT distinct a.id 
-                                                FROM achats a
-                                                WHERE a.centrale_produit_id = :id
-                                                                                """)
-                        upd_purchases = text(""" UPDATE achats SET produit_id = :prodId WHERE id IN :ids""")
-                        df_purchases = pd.read_sql_query(sel_purchases, connection_client, params={'id': cent_prod_id})
-                        df_purchases['id'] = pd.to_numeric(df_purchases['id'])
-                        list_of_purchases = df_purchases['id'].drop_duplicates().tolist()
+                    if i != "vetfamily":
+                        upd_purchases_ref = text(""" UPDATE achats SET produit_id = :prodId WHERE id IN (SELECT distinct a.id FROM achats a WHERE a.centrale_produit_id = :centProdId)""")
+                        upd_purchases = None
                     else:
-                        sel_purchases = text("""
-                                                SELECT distinct purr_id 
-                                                FROM ed_purchases_ref
-                                                WHERE purr_central_product_id = :id
-                                                                                """)
+                        upd_purchases_ref = text(
+                            """ UPDATE ed_purchases_ref SET purr_product_id = :prodId WHERE purr_id IN (select distinct purr_id FROM ed_purchases_ref WHERE purr_central_product_id = :centProdId)""")
                         upd_purchases = text(
-                            """ UPDATE ed_purchases_ref SET purr_product_id = :prodId WHERE purr_id IN :ids""")
-                        df_purchases = pd.read_sql_query(sel_purchases, connection_client, params={'id': cent_prod_id})
-                        df_purchases['purr_id'] = pd.to_numeric(df_purchases['purr_id'])
-                        list_of_purchases = df_purchases['purr_id'].drop_duplicates().tolist()
+                            """ UPDATE ed_purchase SET purc_product_id = :prodId WHERE purc_purchase_ref_id IN (select distinct purr_id FROM ed_purchases_ref WHERE purr_central_product_id = :centProdId)""")
 
-                    if len(list_of_purchases) > 0:
-                        res = connection_client.execute(upd_purchases, prodId=new_product,
-                                                        ids=(tuple(list_of_purchases)))
-                        clients[i] = res.rowcount
-                    else:
-                        clients[i] = 0
+                    res = connection_client.execute(upd_purchases_ref, prodId=new_product, centProdId=cent_prod_id)
+                    clients[i] = res.rowcount
+                    if upd_purchases is not None:
+                        connection_client.execute(upd_purchases, prodId=new_product, centProdId=cent_prod_id)
 
                 except (Exception, psycopg2.Error) as error_client:
                     if connection_client:
