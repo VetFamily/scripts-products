@@ -109,8 +109,8 @@ def process_products():
         logging.debug(f'** Move "{filename}" to backup files directory **')
         shutil.move(f, os.path.join(products_out_files_dir, filename))
 
-    # Initialize dataframe of products, making sure that there is a 'type' column
-    df = pd.DataFrame(columns=['type'])
+    # Initialize dataframe of products, making sure that there is a 'product_type' column
+    df = pd.DataFrame(columns=['product_type'])
 
     logging.debug('Aggregate files...')
     for f in sorted(glob.glob(os.path.join(products_out_files_dir, '*.*'))):
@@ -328,7 +328,7 @@ def process_products():
         df_source_merged = df_source_copy.reset_index().merge(
             types_especes_restricted,
             how='left',
-            left_on=['laboratoire_id', 'type'] if source_id == 11 else 'type',
+            left_on=['laboratoire_id', 'product_type'] if source_id == 11 else 'product_type',
             right_on=['supplier_id', 'type_source'] if source_id == 11 else 'type_source').set_index('index')
 
         df_source['types'] = df_source_merged['new_type']

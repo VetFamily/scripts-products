@@ -57,31 +57,33 @@ def check_dataframe(df, con):
     """
     df = df[df['Id'].isnull()]
 
-    # check that all rows have name, packaging and supplier
-    for col in ['Dénomination', 'Laboratoire', 'Types', 'Espèces']:
-        if df[col].isnull().values.any():
-            raise ValueError(f"Empty value(s) in column {col}")
+    if len(df) > 0:
+        # check that all rows have name, packaging and supplier
+        for col in ['Dénomination', 'Laboratoire', 'Types', 'Espèces']:
+            if df[col].isnull().values.any():
+                raise ValueError(f"Empty value(s) in column {col}")
 
-    # check that all values in 'Types' column exist in table 'types'
-    types = pd.read_sql_query("select nom from types where obsolete is false", con)
-    check_values(df['Types'], types['nom'])
+        # check that all values in 'Types' column exist in table 'types'
+        types = pd.read_sql_query("select code as nom from types where obsolete is false", con)
+        check_values(df['Types'], types['nom'])
 
-    # check that all values in 'Espèces' column exist in table 'especes'
-    especes = pd.read_sql_query("select nom from especes where obsolete is false", con)
-    df_series = df.explode('Espèces')
-    check_values(df_series, especes['nom'])
+        # check that all values in 'Espèces' column exist in table 'especes'
+        especes = pd.read_sql_query("select nom from especes where obsolete is false", con)
+        df_series = df['Espèces'].str.split('|').apply(pd.Series).stack()
+        df_series.name = 'nom'
+        check_values(df_series, especes['nom'])
 
-    # check that all values in columns 'Obsolète' and 'Invisible' are either 'True' or 'False'
-    check_values(df['Obsolète'], ['True', 'False'])
-    check_values(df['Invisible'], ['True', 'False'])
+        # check that all values in columns 'Obsolète' and 'Invisible' are either 'True' or 'False'
+        check_values(df['Obsolète'], ['True', 'False'])
+        check_values(df['Invisible'], ['True', 'False'])
 
-    # check that all values in 'ID classe thérapeutique' column exist in table
-    #   'familles_therapeutiques'
-    familles = pd.read_sql_query(
-        "select id from familles_therapeutiques where obsolete is false",
-        con
-    )
-    check_values(pd.to_numeric(df['ID classe thérapeutique']), familles['id'])
+        # check that all values in 'ID classe thérapeutique' column exist in table
+        #   'familles_therapeutiques'
+        familles = pd.read_sql_query(
+            "select id from familles_therapeutiques where obsolete is false",
+            con
+        )
+        check_values(pd.to_numeric(df['ID classe thérapeutique']), familles['id'])
 
 
 def insert_new_product(df):
@@ -143,10 +145,11 @@ def insert_types(df):
     df_temp = df_temp[df_temp['Types'].notnull()]
 
     if len(df_temp) > 0:
-        df_types = df_temp.explode('Types')
+        df_types = pd.DataFrame(df_temp['Types'].str.split('|').tolist(), index=df_temp['produit_id']).stack()
+        df_types = df_types.reset_index()[[0, 'produit_id']]
         df_types.columns = ['type_id', 'produit_id']
         df_types = df_types.replace(
-            {'type_id': {"Aliment": 1, "Antibiotique": 2, "Divers": 3, "Matériel": 4, "Médicament": 5, "Biocide": 6}})
+            {'type_id': {"ALI": 1, "ATB": 2, "DIV": 3, "MAT": 4, "MED": 5, "BIO": 6}})
         df_types.drop_duplicates(inplace=True)
         df_types.to_sql('produit_type', engine, if_exists='append', index=False, chunksize=1000)
         count_of_types = len(df_types)
@@ -199,7 +202,8 @@ def insert_species(df):
     df_temp = df_temp[df_temp['Espèces'].notnull()]
 
     if len(df_temp) > 0:
-        df_species = df_temp.explode('Espèces')
+        df_species = pd.DataFrame(df_temp['Espèces'].str.split('|').tolist(), index=df_temp['produit_id']).stack()
+        df_species = df_species.reset_index()[[0, 'produit_id']]
         df_species.columns = ['espece_id', 'produit_id']
         df_species = df_species.replace(
             {'espece_id': {"Canine": 1, "Equine": 2, "Rurale": 3, "Porc": 4, "Volaille": 5, "Autres": 6}})
@@ -273,7 +277,7 @@ def insert_central_codes(df, cent_id, cent_name):
     df_temp_new = df_temp[df_temp['centrale_produit_id'].isnull()].copy()
 
     # Insert into centrale_produit
-    df_temp_new_cp = df_temp_new[['produit_id', 'code_produit', 'cirrina_pricing_condition_id']]
+    df_temp_new_cp = df_temp_new[['produit_id', 'code_produit', 'cirrina_pricing_condition_id']].copy()
     df_temp_new_cp['centrale_id'] = cent_id
     df_temp_new_cp['country_id'] = country_id
     df_temp_new_cp.drop_duplicates(inplace=True)
@@ -289,7 +293,7 @@ def insert_central_codes(df, cent_id, cent_name):
 
     if len(df_temp_new) > 0:
         # Insert into centrale_produit_denominations
-        df_temp_new_cpd = df_temp_new[['centrale_produit_id', 'nom']]
+        df_temp_new_cpd = df_temp_new[['centrale_produit_id', 'nom']].copy()
         df_temp_new_cpd['date_creation'] = date
         df_temp_new_cpd.drop_duplicates(inplace=True)
         df_temp_new_cpd.to_sql('centrale_produit_denominations', engine, if_exists='append', index=False,
@@ -408,7 +412,9 @@ def process():
 
     # Add Vetapro codes
     if country_id == 1:
-        df.loc[df['Id'].isnull() & df['Code_Vetapro'].isnull(), 'Code_Vetapro'] = df['produit_id']
+        df.loc[df['Id'].isnull(), 'Code_Vetapro'] = df['produit_id']
+        df.loc[df['Id'].isnull(), 'Dénomination_Vetapro'] = df[['Dénomination', 'Conditionnement']].apply(
+            lambda x: ' '.join(x.dropna()), axis=1)
 
     # Add country ID for products
     insert_product_country(df)
