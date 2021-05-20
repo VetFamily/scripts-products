@@ -188,8 +188,8 @@ def process_products():
             right_on='code_gtin'
         )
 
-        # when no match: new lookup using product code (only for source_id 11 and 16)
-        if source_id in [11, 16]:
+        # when no match: new lookup using product code (only for source_id DIRECT and KRUUSE)
+        if source_id in [constant.SOURCE_DIRECT_ID, constant.SOURCE_KRUUSE_ID]:
             df_temp_not_matched = df_temp[~df_temp['temp_id'].isin(df_source['temp_id'])]
 
             df_product_codes = df_product_sources[df_product_sources['centrale_id'] == source_id]
@@ -284,7 +284,7 @@ def process_products():
         )
 
         # Check if source code already added
-        if source_id in [18, 19]:
+        if source_id in [constant.SOURCE_CIRRINA_ID, constant.SOURCE_SERVIPHAR_ID]:
             df_source["product_code"] = df_source["product_code"].dropna().astype(str)
         else:
             df_source["product_code"] = df_source["product_code"].dropna().apply(
@@ -328,8 +328,9 @@ def process_products():
         df_source_merged = df_source_copy.reset_index().merge(
             types_especes_restricted,
             how='left',
-            left_on=['laboratoire_id', 'product_type'] if source_id == 11 else 'product_type',
-            right_on=['supplier_id', 'type_source'] if source_id == 11 else 'type_source').set_index('index')
+            left_on=['laboratoire_id', 'product_type'] if source_id == constant.SOURCE_DIRECT_ID else 'product_type',
+            right_on=['supplier_id',
+                      'type_source'] if source_id == constant.SOURCE_DIRECT_ID else 'type_source').set_index('index')
 
         df_source['types'] = df_source_merged['new_type']
         df_source['especes'] = df_source_merged['new_especes']
@@ -345,7 +346,7 @@ def process_products():
                         'Obsolète', 'Invisible', 'Types', 'Espèces', 'Code_' + source_name,
                         'Dénomination_' + source_name]
 
-        if source_id in [18, 19]:
+        if source_id in [constant.SOURCE_CIRRINA_ID, constant.SOURCE_SERVIPHAR_ID]:
             columns.append('cirrina_pricing_condition_id')
             columns_name.append('Condition_commerciale_' + source_name)
 

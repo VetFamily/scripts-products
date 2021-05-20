@@ -22,7 +22,7 @@ from sqlalchemy.engine.url import URL
 from sqlalchemy.sql import text
 
 from config import config
-from src.common import common
+from src.common import common, constant
 
 
 def getArguments():
@@ -234,7 +234,7 @@ def insert_central_codes(df, cent_id, cent_name):
         'Condition_commerciale_' + cent_name: 'cirrina_pricing_condition_id'
     }
 
-    if cent_id in [18, 19]:
+    if cent_id in [constant.SOURCE_CIRRINA_ID, constant.SOURCE_SERVIPHAR_ID]:
         df_temp = df_temp[['produit_id', 'Code_' + cent_name, 'Dénomination_' + cent_name,
                            'Condition_commerciale_' + cent_name]]
     else:
@@ -509,7 +509,9 @@ if __name__ == "__main__":
             count_of_centrals_codes = {"Alcyon": 0, "Centravet": 0, "Coveto": 0, "Alibon": 0, "Vetapro": 0,
                                        "Vetys": 0, "Hippocampe": 0, "Agripharm": 0, "Elvetis": 0, "Longimpex": 0,
                                        "Direct": 0, "Cedivet": 0, "Covetrus": 0, "Apoex": 0, "Kruuse": 0,
-                                       "Apotek1": 0, "Cirrina": 0, "Serviphar": 0, "Soleomed": 0, "Veso": 0}
+                                       "Apotek1": 0, "Cirrina": 0, "Serviphar": 0, "Soleomed": 0, "Veso": 0,
+                                       "Distrivet": 0, "Elasa": 0, "Centauro": 0
+                                       }
             if os.stat(os.path.join(workDir, os.path.basename(f))).st_size > 0:
                 # Read Excel file
                 df_init = pd.read_excel(os.path.join(workDir, os.path.basename(f)), dtype=str)
