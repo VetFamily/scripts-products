@@ -23,7 +23,7 @@ from src.common import common, constant
 
 
 def getArguments():
-    parser = argparse.ArgumentParser(description='Lancement du traitement du fichier de valorisations Vetapro')
+    parser = argparse.ArgumentParser(description='Lancement du traitement des doublons')
     # parser.add_argument('-o', '--output', help='Output file name', default='stdout')
     required_args = parser.add_argument_group('required named arguments')
     required_args.add_argument('-c', '--country', help='ID of country', required=True)
@@ -35,7 +35,7 @@ def process():
 
     if country_id == constant.COUNTRY_FRANCE_ID:
         clients = {"bourgelat": 0, "vetoavenir": 0, "vetapharma": 0, "vetharmonie": 0, "cristal": 0,
-                   "symbioveto": 0, "clubvet": 0, "vetodistribution": 0, "vetfamily": 0}
+                   "symbioveto": 0, "clubvet": 0, "vetodistribution": 0, "vetfamily": 0, "vetapro": 0}
     else:
         clients = {"vetfamily": 0}
 
@@ -83,16 +83,16 @@ def process():
                                          ignore_index=True)
                 continue
             # Insert country for product
-            if new_product not in df_product_countries['purr_source_clinic_id'].drop_duplicates().tolist():
+            if new_product not in df_product_countries['product_id'].drop_duplicates().tolist():
                 ins_prod_country = text(
                     """ INSERT INTO product_country (product_id, country_id) VALUES (:prodId, :countryId)""")
-            res_ins_prod_country = connection.execute(ins_prod_country, prodId=new_product, countryId=country_id)
-            df_product_countries.append({'product_id': new_product}, ignore_index=True)
-            if res_ins_prod_country.rowcount == 0:
-                df_logs = df_logs.append({'centrale_id': cent_id, 'code_produit': product_code,
-                                          'produit_id_ancien': old_product, 'produit_id_nouveau': new_product,
-                                          'commentaire': 'Erreur de l\'ajout du pays pour le produit'},
-                                         ignore_index=True)
+                res_ins_prod_country = connection.execute(ins_prod_country, prodId=new_product, countryId=country_id)
+                df_product_countries.append({'product_id': new_product}, ignore_index=True)
+                if res_ins_prod_country.rowcount == 0:
+                    df_logs = df_logs.append({'centrale_id': cent_id, 'code_produit': product_code,
+                                              'produit_id_ancien': old_product, 'produit_id_nouveau': new_product,
+                                              'commentaire': 'Erreur de l\'ajout du pays pour le produit'},
+                                             ignore_index=True)
 
             # For each client : update purchases
             for i in clients:
@@ -140,7 +140,7 @@ def process():
                 df_logs = df_logs.append(
                     {'centrale_id': cent_id, 'code_produit': product_code, 'produit_id_ancien': old_product,
                      'produit_id_nouveau': new_product, 'commentaire': 'OK', 'bourgelat': clients['bourgelat'],
-                     'vetoavenir': clients['vetoavenir'], """'vetapro': clients['vetapro'],"""
+                     'vetoavenir': clients['vetoavenir'], 'vetapro': clients['vetapro'],
                      'vetapharma': clients['vetapharma'], 'vetharmonie': clients['vetharmonie'],
                      'cristal': clients['cristal'], 'symbioveto': clients['symbioveto'], 'clubvet': clients['clubvet'],
                      'vetodistribution': clients['vetodistribution'], 'vetfamily': clients['vetfamily']},
@@ -196,14 +196,14 @@ if __name__ == "__main__":
         # Create empty logs dataframes
         if country_id == constant.COUNTRY_FRANCE_ID:
             df_logs = pd.DataFrame(columns=['centrale_id', 'code_produit', 'produit_id_ancien', 'produit_id_nouveau',
-                                            'commentaire', 'bourgelat', 'vetoavenir', 'vetapharma',
+                                            'commentaire', 'bourgelat', 'vetoavenir', 'vetapro', 'vetapharma',
                                             'vetharmonie', 'cristal', 'symbioveto', 'clubvet', 'vetodistribution',
                                             'vetfamily'])
         else:
             df_logs = pd.DataFrame(columns=['centrale_id', 'code_produit', 'produit_id_ancien', 'produit_id_nouveau',
                                             'commentaire', 'vetfamily'])
 
-        for f in glob.glob(r'' + initDir + '/*.[xX][lL][sS][xX]'):
+        for f in glob.glob(r'' + initDir + F'/*.[xX][lL][sS][xX]'):
             print(f'Processing file "{os.path.basename(f)}" ...')
 
             # Begin transaction
