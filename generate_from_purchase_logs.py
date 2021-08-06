@@ -144,7 +144,6 @@ def process_products():
             p.famille_therapeutique_id as famille_therapeutique_id_temp, p.code_gtin
         from produits p"""
     df_products = pd.read_sql_query(query_products, connection)
-    df_products['code_gtin'] = pd.to_numeric(df_products['code_gtin'], errors="coerce")
 
     # Search existing codes sources of products in database
     query_product_sources = """
@@ -174,7 +173,11 @@ def process_products():
         logging.info(f"Source : {source_name}")
 
         df_temp = df_group.copy()
-        df_temp['product_gtin'] = pd.to_numeric(df_temp['product_gtin'], errors="coerce")
+        df_products_temp = df_products.copy()
+
+        if source_id != constant.SOURCE_CIRRINA_ID:
+            df_products_temp['code_gtin'] = pd.to_numeric(df_products_temp['code_gtin'], errors="coerce")
+            df_temp['product_gtin'] = pd.to_numeric(df_temp['product_gtin'], errors="coerce")
 
         # add temporary id to make sequence of lookups easier
         df_temp['temp_id'] = range(len(df_temp))
@@ -182,7 +185,7 @@ def process_products():
         # first lookup using GTIN
         df_source = pd.merge(
             df_temp,
-            df_products[df_products['code_gtin'].notnull()],
+            df_products_temp[df_products_temp['code_gtin'].notnull()],
             how='inner',
             left_on='product_gtin',
             right_on='code_gtin'
@@ -205,7 +208,7 @@ def process_products():
 
             df_source2 = pd.merge(
                 df_source2,
-                df_products,
+                df_products_temp,
                 how='inner',
                 on='produit_id'
             )
@@ -217,15 +220,15 @@ def process_products():
         df_temp_not_matched = df_temp[~df_temp['temp_id'].isin(df_source['temp_id'])].copy()
 
         df_temp_not_matched['normalized_name'] = df_temp_not_matched['product_name'].str.lower()
-        df_products['normalized_name'] = df_products['denomination_temp'].str.lower()
+        df_products_temp['normalized_name'] = df_products_temp['denomination_temp'].str.lower()
 
         df_source3 = pd.merge(
             df_temp_not_matched,
-            df_products[df_products['denomination_temp'].notnull()],
+            df_products_temp[df_products_temp['denomination_temp'].notnull()],
             how='inner',
             on='normalized_name'
         )
-        del df_source3['normalized_name']
+        del df_source3['normalized_name'], df_products_temp
 
         df_source = pd.concat([df_source, df_source3], axis=0, sort=False, ignore_index=True)
 
