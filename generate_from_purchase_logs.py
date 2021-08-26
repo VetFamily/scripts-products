@@ -287,7 +287,7 @@ def process_products():
         )
 
         # Check if source code already added
-        if source_id in [constant.SOURCE_CIRRINA_ID, constant.SOURCE_SERVIPHAR_ID]:
+        if source_id in [constant.SOURCE_CIRRINA_ID, constant.SOURCE_SERVIPHAR_ID, constant.SOURCE_DISTRIVET_ID]:
             df_source["product_code"] = df_source["product_code"].dropna().astype(str)
         else:
             df_source["product_code"] = df_source["product_code"].dropna().apply(

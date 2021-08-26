@@ -385,7 +385,7 @@ def process():
     df['Invisible'] = df['Invisible'] == 'True'
     df['Id'] = pd.to_numeric(df['Id'])
     df['Laboratoire'] = pd.to_numeric(df['Laboratoire'])
-    df['Code GTIN'] = df['Code GTIN'].dropna().apply(lambda x: str(int(x)))
+    df['Code GTIN'] = df['Code GTIN'].dropna().apply(lambda x: str(int(x)) if type(x) is float else str(x))
     df['Autre code GTIN'] = df['Autre code GTIN'].dropna().apply(lambda x: str(int(x)) if type(x) is float else str(x))
     df['Dénomination'] = df['Dénomination'].dropna().astype(str)
     df['Conditionnement'] = df['Conditionnement'].dropna().astype(str)
@@ -422,10 +422,10 @@ def process():
     if country_id == 1:
         insert_product_country_label(df, True)
 
-    # Remove .0 from codes columns (not for Cirrina and Serviphar)
+    # Remove .0 from codes columns (not for Cirrina, Serviphar and Distrivet)
     for col in df.columns:
         if 'Code_' in col:
-            if col in ['Code_Cirrina', 'Code_Serviphar']:
+            if col in ['Code_Cirrina', 'Code_Serviphar', 'Code_Distrivet']:
                 df[col] = df[col].dropna().astype(str)
             else:
                 df[col] = df[col].dropna().apply(lambda x: str(int(x)) if type(x) is float else x)
