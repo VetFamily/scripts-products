@@ -65,7 +65,7 @@ def process_products():
                                          'Code_Coveto', 'Dénomination_Coveto', 'Tarif_Coveto',
                                          'Code_Alibon', 'Dénomination_Alibon', 'Tarif_Alibon',
                                          'Code_Vetapro', 'Dénomination_Vetapro', 'Tarif_Vetapro',
-                                         'Code_Vetys', 'Dénomination_Vetys', 'Tarif_Vetys',
+                                         'Code_Vetys pharma', 'Dénomination_Vetys pharma', 'Tarif_Vetys pharma',
                                          'Code_Hippocampe', 'Dénomination_Hippocampe', 'Tarif_Hippocampe',
                                          'Code_Agripharm', 'Dénomination_Agripharm', 'Tarif_Agripharm',
                                          'Code_Elvetis', 'Dénomination_Elvetis', 'Tarif_Elvetis',
@@ -91,7 +91,7 @@ def process_products():
             from produits
             where code_gtin is not null""")
         df_products = pd.read_sql_query(query_products, connection)
-        df_products['code_gtin'] = pd.to_numeric(df_products['code_gtin'])
+        df_products['code_gtin'] = pd.to_numeric(df_products['code_gtin'], errors="coerce")
 
         # Search existing therapeutic classes in database
         query_classes = text("""
@@ -145,7 +145,7 @@ def process_products():
                                    'quantite_ug', 'code_cip']
 
                 df_file['code_gtin'] = df_file['code_gtin'].dropna().apply(lambda x: str(x).replace(',', '.'))
-                df_file['code_gtin'] = pd.to_numeric(df_file['code_gtin'].replace(',', '.'))
+                df_file['code_gtin'] = pd.to_numeric(df_file['code_gtin'].replace(',', '.'), errors="coerce")
 
                 temp = pd.merge(df_file[pd.notnull(df_file['code_gtin'])], df_products, on='code_gtin', how='left')
                 df_temp = pd.concat([temp, df_file[pd.isnull(df_file['code_gtin'])]], axis=0, sort=False, ignore_index=True)
