@@ -396,16 +396,18 @@ def process():
 
     # Add products IDs
     query_products = text("""
-                SELECT id as produit_id, denomination, conditionnement, laboratoire_id, obsolete, invisible, code_gtin
+                SELECT id as produit_id, denomination, conditionnement, laboratoire_id, obsolete, invisible, code_gtin, 
+                    code_gtin_autre, famille_therapeutique_id
                 FROM produits""")
     df_products = pd.read_sql_query(query_products, connection)
     df_products['produit_id'] = pd.to_numeric(df_products['produit_id'])
     df_products['laboratoire_id'] = pd.to_numeric(df_products['laboratoire_id'])
 
     temp = pd.merge(df[df['Id'].isnull()], df_products,
-                    left_on=['Code GTIN', 'Dénomination', 'Conditionnement', 'Laboratoire', 'Obsolète', 'Invisible'],
-                    right_on=['code_gtin', 'denomination', 'conditionnement', 'laboratoire_id', 'obsolete',
-                              'invisible'], how='left')
+                    left_on=['Code GTIN', 'Autre code GTIN', 'ID classe thérapeutique', 'Dénomination',
+                             'Conditionnement', 'Laboratoire', 'Obsolète', 'Invisible'],
+                    right_on=['code_gtin', 'code_gtin_autre', 'famille_therapeutique_id', 'denomination',
+                              'conditionnement', 'laboratoire_id', 'obsolete', 'invisible'], how='left')
     df = pd.concat([temp, df[df['Id'].notnull()]], axis=0, sort=False, ignore_index=True)
     df.loc[df['produit_id'].isnull(), 'produit_id'] = df['Id']
     df['produit_id'] = pd.to_numeric(df['produit_id'])
