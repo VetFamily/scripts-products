@@ -328,15 +328,30 @@ def process_products():
             inplace=True
         )
 
-        df_source_merged = df_source_copy.reset_index().merge(
-            types_especes_restricted,
-            how='left',
-            left_on=['laboratoire_id', 'product_type'] if source_id == constant.SOURCE_DIRECT_ID else 'product_type',
-            right_on=['supplier_id',
-                      'type_source'] if source_id == constant.SOURCE_DIRECT_ID else 'type_source').set_index('index')
+        if len(types_especes_restricted['type_source'].notnull()) > 0:
+            df_source_merged = df_source_copy.reset_index().merge(
+                types_especes_restricted[types_especes_restricted['type_source'].notnull()], how='left',
+                left_on=['laboratoire_id',
+                         'product_type'] if source_id == constant.SOURCE_DIRECT_ID else 'product_type',
+                right_on=['supplier_id',
+                          'type_source'] if source_id == constant.SOURCE_DIRECT_ID else 'type_source').set_index(
+                'index')
 
-        df_source['types'] = df_source_merged['new_type']
-        df_source['especes'] = df_source_merged['new_especes']
+            df_source['types'] = df_source_merged['new_type']
+            df_source['especes'] = df_source_merged['new_especes']
+
+        if len(types_especes_restricted['type_source'].isnull()) > 0:
+            if source_id == constant.SOURCE_DIRECT_ID:
+                df_source_merged = df_source_copy.reset_index().merge(
+                    types_especes_restricted[types_especes_restricted['type_source'].isnull()],
+                    how='left',
+                    left_on=['laboratoire_id'],
+                    right_on=['supplier_id']).set_index('index')
+                df_source['types'] = df_source_merged['new_type']
+                df_source['especes'] = df_source_merged['new_especes']
+            else:
+                df_source['types'] = types_especes_restricted['new_type']
+                df_source['especes'] = types_especes_restricted['new_especes']
 
         columns = ['produit_id', 'denomination_temp', 'conditionnement_temp', 'laboratoire_id_temp',
                    'obsolete_temp', 'invisible_temp', 'famille_therapeutique_id_temp', 'product_gtin',
