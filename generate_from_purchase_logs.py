@@ -244,8 +244,8 @@ def process_products():
         del df_source['temp_id']
 
         df_source['denomination'] = df_source['product_name']
-        df_source['obsolete'] = df_source['obsolete_temp']
-        df_source['invisible'] = df_source['invisible_temp']
+        df_source['obsolete'] = np.where(df_source['obsolete_temp'].notnull(), df_source['obsolete_temp'], False)
+        df_source['invisible'] = np.where(df_source['invisible_temp'].notnull(), df_source['invisible_temp'], False)
         df_source['conditionnement'] = np.nan
         df_source['types'] = np.nan
         df_source['especes'] = np.nan
@@ -400,7 +400,7 @@ def process_products():
                   ['B' + x for x in alphabet] + ['C' + x for x in alphabet])
     # Excel names of all columns beginning with 'Code_'
     code_cols = [excel_cols[i] for i in range(len(df_final.columns))
-                 if df_final.columns[i].startswith('Code_')]
+                 if df_final.columns[i].startswith('Code_') or (df_final.columns[i] == 'Dénomination')]
 
     for col in code_cols:
         worksheet.conditional_format(col + '2:' + col + str(len(df_final)+1),
