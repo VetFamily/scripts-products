@@ -353,6 +353,15 @@ def process_products():
                 df_source['types'] = types_especes_restricted['new_type']
                 df_source['especes'] = types_especes_restricted['new_especes']
 
+        # Specific steps for distributor/supplier
+        """if source_id == constant.SOURCE_APOEX_ID:
+            df_source['denomination'] = np.where(df_source['product_type'] == '...',
+                                                 df_source['denomination'] + 'MerFM', df_source['denomination'])
+        elif source_id == constant.SOURCE_DIRECT_ID:
+            for supplier_id in df_source['laboratoire_id'].drop_duplicates():
+                # Write specific step for df_source[df_source['laboratoire_id'] == supplier_id]
+                """
+
         columns = ['produit_id', 'denomination_temp', 'conditionnement_temp', 'laboratoire_id_temp',
                    'obsolete_temp', 'invisible_temp', 'famille_therapeutique_id_temp', 'product_gtin',
                    'classe_therapeutique', 'famille_therapeutique_id', 'denomination', 'conditionnement',
