@@ -328,7 +328,7 @@ def process_products():
             inplace=True
         )
 
-        if len(types_especes_restricted['type_source'].notnull()) > 0:
+        if len(types_especes_restricted[types_especes_restricted['type_source'].notnull()]) > 0:
             df_source_merged = df_source_copy.reset_index().merge(
                 types_especes_restricted[types_especes_restricted['type_source'].notnull()], how='left',
                 left_on=['laboratoire_id',
@@ -340,7 +340,7 @@ def process_products():
             df_source['types'] = df_source_merged['new_type']
             df_source['especes'] = df_source_merged['new_especes']
 
-        if len(types_especes_restricted['type_source'].isnull()) > 0:
+        if len(types_especes_restricted[types_especes_restricted['type_source'].isnull()]) > 0:
             if source_id == constant.SOURCE_DIRECT_ID:
                 df_source_merged = df_source_copy.reset_index().merge(
                     types_especes_restricted[types_especes_restricted['type_source'].isnull()],
@@ -350,8 +350,8 @@ def process_products():
                 df_source['types'] = df_source_merged['new_type']
                 df_source['especes'] = df_source_merged['new_especes']
             else:
-                df_source['types'] = types_especes_restricted['new_type']
-                df_source['especes'] = types_especes_restricted['new_especes']
+                df_source['types'] = types_especes_restricted['new_type'].iloc[0]
+                df_source['especes'] = types_especes_restricted['new_especes'].iloc[0]
 
         # Specific steps for distributor/supplier
         """if source_id == constant.SOURCE_APOEX_ID:
