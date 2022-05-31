@@ -38,20 +38,26 @@ def insert_source_code(df, source_id):
 
     del df_source_tmp['centrale_produit_id']
     query_product_sources = text("""
-        select id as centrale_produit_id, code_produit as product_code, cirrina_pricing_condition_id
+        select id as centrale_produit_id, code_produit as product_code, cirrina_pricing_condition_id, 
+            supplier_id as laboratoire_id
         from centrale_produit
         where centrale_id = :sourceId
         and country_id = :countryId""")
     df_tmp = pd.read_sql_query(query_product_sources, connection,
                                 params={"sourceId": source_id, "countryId": country_id})
     df_tmp['cirrina_pricing_condition_id'] = pd.to_numeric(df['cirrina_pricing_condition_id'])
-    df_source_tmp = pd.merge(df_source_tmp, df_tmp, on=['product_code', 'cirrina_pricing_condition_id'], how='left')
+    df_tmp['laboratoire_id'] = pd.to_numeric(df['laboratoire_id'])
+    df_source_tmp = \
+        pd.merge(df_source_tmp, df_tmp,
+                 on=['product_code',
+                     'cirrina_pricing_condition_id'] if source_id != constant.SOURCE_DIRECT_ID else [
+                     'product_code', 'cirrina_pricing_condition_id', 'laboratoire_id'], how='left')
     df_source_tmp = df_source_tmp[df_source_tmp['centrale_produit_id'].isnull()]
     del df_tmp
 
     # Insert into centrale_produit
-    df_temp_new_cp = df_source_tmp[['product_code', 'cirrina_pricing_condition_id']].copy()
-    df_temp_new_cp.rename(columns={'product_code': 'code_produit'}, inplace=True)
+    df_temp_new_cp = df_source_tmp[['product_code', 'cirrina_pricing_condition_id', 'laboratoire_id']].copy()
+    df_temp_new_cp.rename(columns={'product_code': 'code_produit', 'laboratoire_id': 'supplier_id'}, inplace=True)
     df_temp_new_cp['centrale_id'] = source_id
     df_temp_new_cp['country_id'] = country_id
     df_temp_new_cp.drop_duplicates(inplace=True)
@@ -61,9 +67,13 @@ def insert_source_code(df, source_id):
     # Search existing codes sources of products in database
     del df_source_tmp['centrale_produit_id']
     df_tmp = pd.read_sql_query(query_product_sources, connection,
-                                params={"sourceId": source_id, "countryId": country_id})
+                               params={"sourceId": source_id, "countryId": country_id})
     df_tmp['cirrina_pricing_condition_id'] = pd.to_numeric(df_tmp['cirrina_pricing_condition_id'])
-    df_source_tmp = pd.merge(df_source_tmp, df_tmp, on=['product_code', 'cirrina_pricing_condition_id'], how='left')
+    df_source_tmp = \
+        pd.merge(df_source_tmp, df_tmp,
+                 on=['product_code',
+                     'cirrina_pricing_condition_id'] if source_id != constant.SOURCE_DIRECT_ID else [
+                     'product_code', 'cirrina_pricing_condition_id', 'laboratoire_id'], how='left')
     del df_tmp
 
     if len(df_source_tmp) > 0:
@@ -148,12 +158,13 @@ def process_products():
     # Search existing codes sources of products in database
     query_product_sources = """
         select id as centrale_produit_id, code_produit, centrale_id, cirrina_pricing_condition_id,
-               produit_id, country_id
+               produit_id, country_id, supplier_id as laboratoire_id
         from centrale_produit
         where produit_id is not null"""
     df_product_sources = pd.read_sql_query(query_product_sources, connection)
     df_product_sources['cirrina_pricing_condition_id'] = pd.to_numeric(
         df_product_sources['cirrina_pricing_condition_id'])
+    df_product_sources['laboratoire_id'] = pd.to_numeric(df_product_sources['laboratoire_id'])
 
     # Search existing therapeutic classes in database
     query_classes = text("""
@@ -179,6 +190,52 @@ def process_products():
             df_products_temp['code_gtin'] = pd.to_numeric(df_products_temp['code_gtin'], errors="coerce")
             df_temp['product_gtin'] = pd.to_numeric(df_temp['product_gtin'], errors="coerce")
 
+        # Laboratories
+        if source_id != constant.SOURCE_DIRECT_ID:
+            # Search existing laboratories in database
+            query_labs = text("""
+                select laboratoire_id, nom_laboratoire as laboratoire, cirrina_pricing_condition_id
+                from centrale_laboratoire
+                where laboratoire_id is not null and centrale_id = :id""")
+            df_labs = pd.read_sql_query(query_labs, connection, params={'id': source_id})
+            df_labs['cirrina_pricing_condition_id'] = pd.to_numeric(df_labs['cirrina_pricing_condition_id'])
+
+            df_temp = pd.merge(df_temp, df_labs, left_on='supplier', right_on='laboratoire', how='left')
+        else:
+            # Case of direct
+            for supplier_name in df_temp['supplier'].drop_duplicates():
+                supplier_id = common.get_id_of_source(connection, country_id, country_name, supplier_name)[1]
+                df_temp.loc[df_temp['supplier'] == supplier_name, 'laboratoire_id'] = supplier_id
+            df_temp['cirrina_pricing_condition_id'] = np.nan
+
+        df_temp.loc[df_temp['laboratoire_id'].isnull(), 'laboratoire_id'] = df_temp['supplier']
+        df_temp['cirrina_pricing_condition_id'] = pd.to_numeric(df_temp['cirrina_pricing_condition_id'])
+
+        # Therapeutic classes
+        if 'classe_therapeutique' not in df_temp.columns:
+            df_temp['classe_therapeutique'] = np.nan
+        df_temp['famille_therapeutique'] = df_temp['classe_therapeutique'].dropna().apply(
+            lambda x: str(x).replace(' ', '')[:4]).astype(str)
+
+        df_temp = pd.merge(
+            df_temp,
+            df_classes[df_classes['famille_therapeutique'].notnull()],
+            how='left',
+            on='famille_therapeutique'
+        )
+
+        # add temporary id to make sequence of lookups easier
+        df_temp['temp_id'] = range(len(df_temp))
+
+        # first lookup using GTIN
+        df_source = pd.merge(
+            df_temp,
+            df_products_temp[df_products_temp['code_gtin'].notnull()],
+            how='inner',
+            left_on='product_gtin',
+            right_on='code_gtin'
+        )
+
         # add temporary id to make sequence of lookups easier
         df_temp['temp_id'] = range(len(df_temp))
 
@@ -196,14 +253,16 @@ def process_products():
             df_temp_not_matched = df_temp[~df_temp['temp_id'].isin(df_source['temp_id'])]
 
             df_product_codes = df_product_sources[df_product_sources['centrale_id'] == source_id]
-            df_product_codes = df_product_codes[['code_produit', 'produit_id']]
+            df_product_codes = df_product_codes[['code_produit', 'produit_id', 'laboratoire_id']]
 
             df_source2 = pd.merge(
                 df_temp_not_matched,
                 df_product_codes[df_product_codes['code_produit'].notnull()],
                 how='inner',
-                left_on='product_code',
-                right_on='code_produit'
+                left_on='product_code' if source_id != constant.SOURCE_DIRECT_ID else ['product_code',
+                                                                                       'laboratoire_id'],
+                right_on='code_produit' if source_id != constant.SOURCE_DIRECT_ID else ['code_produit',
+                                                                                        'laboratoire_id'],
             )
 
             df_source2 = pd.merge(
@@ -298,8 +357,10 @@ def process_products():
                 (df_product_sources["centrale_id"] == source_id) &
                 (df_product_sources["country_id"] == country_id)
                 ].drop(columns=['produit_id', 'country_id']),
-            left_on=['product_code', 'cirrina_pricing_condition_id'],
-            right_on=['code_produit', 'cirrina_pricing_condition_id'],
+            left_on=['product_code', 'cirrina_pricing_condition_id'] if source_id != constant.SOURCE_DIRECT_ID else [
+                'product_code', 'cirrina_pricing_condition_id', 'laboratoire_id'],
+            right_on=['code_produit', 'cirrina_pricing_condition_id'] if source_id != constant.SOURCE_DIRECT_ID else [
+                'code_produit', 'cirrina_pricing_condition_id', 'laboratoire_id'],
             how='left',
             indicator=True
         )

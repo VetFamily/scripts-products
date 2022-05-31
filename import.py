@@ -231,23 +231,30 @@ def insert_central_codes(df, cent_id, cent_name):
     labels_dict = {
         'Code_' + cent_name: 'code_produit',
         'Dénomination_' + cent_name: 'nom',
-        'Condition_commerciale_' + cent_name: 'cirrina_pricing_condition_id'
+        'Condition_commerciale_' + cent_name: 'cirrina_pricing_condition_id',
+        'laboratoire_id': 'supplier_id'
     }
 
     if cent_id in [constant.SOURCE_CIRRINA_ID, constant.SOURCE_SERVIPHAR_ID]:
         df_temp = df_temp[['produit_id', 'Code_' + cent_name, 'Dénomination_' + cent_name,
                            'Condition_commerciale_' + cent_name]]
+        df_temp['supplier_id'] = np.nan
+    elif cent_id == constant.SOURCE_DIRECT_ID:
+        df_temp = df_temp[['produit_id', 'Code_' + cent_name, 'Dénomination_' + cent_name, 'laboratoire_id']]
+        df_temp['cirrina_pricing_condition_id'] = np.nan
     else:
         df_temp = df_temp[['produit_id', 'Code_' + cent_name, 'Dénomination_' + cent_name]]
         df_temp['cirrina_pricing_condition_id'] = np.nan
+        df_temp['supplier_id'] = np.nan
 
     df_temp.rename(columns=labels_dict, inplace=True)
     df_temp['code_produit'] = df_temp['code_produit'].dropna().astype(str)
     df_temp['nom'] = df_temp['nom'].dropna().astype(str)
     df_temp['cirrina_pricing_condition_id'] = pd.to_numeric(df_temp['cirrina_pricing_condition_id'])
+    df_temp['supplier_id'] = pd.to_numeric(df_temp['supplier_id'])
 
     query_cp = text("""
-                        SELECT id as centrale_produit_id, code_produit, cirrina_pricing_condition_id
+                        SELECT id as centrale_produit_id, code_produit, cirrina_pricing_condition_id, supplier_id
                         FROM centrale_produit
                         WHERE centrale_id = :sourceId
                         AND country_id = :countryId
@@ -255,7 +262,11 @@ def insert_central_codes(df, cent_id, cent_name):
     df_cp = pd.read_sql_query(query_cp, connection, params={'sourceId': cent_id, 'countryId': country_id})
     df_cp['code_produit'] = df_cp['code_produit'].dropna().astype(str)
     df_cp['cirrina_pricing_condition_id'] = pd.to_numeric(df_cp['cirrina_pricing_condition_id'])
-    df_temp = pd.merge(df_temp, df_cp, on=['code_produit', 'cirrina_pricing_condition_id'], how='left')
+    df_cp['supplier_id'] = pd.to_numeric(df_cp['supplier_id'])
+    df_temp = \
+        pd.merge(df_temp, df_cp, on=['code_produit',
+                                     'cirrina_pricing_condition_id'] if cent_id != constant.SOURCE_DIRECT_ID else [
+            'code_produit', 'cirrina_pricing_condition_id', 'supplier_id'], how='left')
     del df_cp
 
     if country_id != 1:
@@ -277,7 +288,7 @@ def insert_central_codes(df, cent_id, cent_name):
     df_temp_new = df_temp[df_temp['centrale_produit_id'].isnull()].copy()
 
     # Insert into centrale_produit
-    df_temp_new_cp = df_temp_new[['produit_id', 'code_produit', 'cirrina_pricing_condition_id']].copy()
+    df_temp_new_cp = df_temp_new[['produit_id', 'code_produit', 'cirrina_pricing_condition_id', 'supplier_id']].copy()
     df_temp_new_cp['centrale_id'] = cent_id
     df_temp_new_cp['country_id'] = country_id
     df_temp_new_cp.drop_duplicates(inplace=True)
@@ -288,7 +299,11 @@ def insert_central_codes(df, cent_id, cent_name):
     df_cp = pd.read_sql_query(query_cp, connection, params={'sourceId': cent_id, 'countryId': country_id})
     df_cp['code_produit'] = df_cp['code_produit'].dropna().astype(str)
     df_cp['cirrina_pricing_condition_id'] = pd.to_numeric(df_cp['cirrina_pricing_condition_id'])
-    df_temp_new = pd.merge(df_temp_new, df_cp, on=['code_produit', 'cirrina_pricing_condition_id'], how='left')
+    df_cp['supplier_id'] = pd.to_numeric(df_cp['supplier_id'])
+    df_temp_new = \
+        pd.merge(df_temp_new, df_cp, on=['code_produit',
+                                         'cirrina_pricing_condition_id'] if cent_id != constant.SOURCE_DIRECT_ID else [
+            'code_produit', 'cirrina_pricing_condition_id', 'supplier_id'], how='left')
     del df_cp
 
     if len(df_temp_new) > 0:
@@ -403,14 +418,20 @@ def process():
     df_products['produit_id'] = pd.to_numeric(df_products['produit_id'])
     df_products['laboratoire_id'] = pd.to_numeric(df_products['laboratoire_id'])
 
+    df.drop(columns=['code_gtin', 'code_gtin_autre', 'famille_therapeutique_id', 'denomination',
+                     'conditionnement', 'laboratoire_id', 'obsolete', 'invisible'], inplace=True)
     temp = pd.merge(df[df['Id'].isnull()], df_products,
                     left_on=['Code GTIN', 'Autre code GTIN', 'ID classe thérapeutique', 'Dénomination',
                              'Conditionnement', 'Laboratoire', 'Obsolète', 'Invisible'],
                     right_on=['code_gtin', 'code_gtin_autre', 'famille_therapeutique_id', 'denomination',
                               'conditionnement', 'laboratoire_id', 'obsolete', 'invisible'], how='left')
-    df = pd.concat([temp, df[df['Id'].notnull()]], axis=0, sort=False, ignore_index=True)
-    df.loc[df['produit_id'].isnull(), 'produit_id'] = df['Id']
-    df['produit_id'] = pd.to_numeric(df['produit_id'])
+
+    temp_not_null = df[df['Id'].notnull()].copy()
+    temp_not_null.drop(columns=['laboratoire_id'], inplace=True)
+    df = pd.concat([temp, pd.merge(temp_not_null, df_products[['produit_id', 'laboratoire_id']],
+                                   left_on=['Id'],
+                                   right_on=['produit_id'], how='left')], axis=0, sort=False, ignore_index=True)
+    del temp_not_null, temp
 
     # Add Vetapro codes
     if country_id == 1:
