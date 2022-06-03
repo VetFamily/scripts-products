@@ -438,6 +438,11 @@ def process_products():
             columns.append('cirrina_pricing_condition_id')
             columns_name.append('Condition_commerciale_' + source_name)
 
+        if source_id in [constant.SOURCE_DIRECT_ID]:
+            df_source['supplier_id'] = df_source['laboratoire_id']
+            columns.append('supplier_id')
+            columns_name.append('Laboratoire_' + source_name)
+
         df_source = df_source[columns]
 
         # remove empty 'useless' columns

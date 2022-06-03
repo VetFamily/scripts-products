@@ -232,7 +232,7 @@ def insert_central_codes(df, cent_id, cent_name):
         'Code_' + cent_name: 'code_produit',
         'Dénomination_' + cent_name: 'nom',
         'Condition_commerciale_' + cent_name: 'cirrina_pricing_condition_id',
-        'laboratoire_id': 'supplier_id'
+        'Laboratoire_' + cent_name: 'supplier_id'
     }
 
     if cent_id in [constant.SOURCE_CIRRINA_ID, constant.SOURCE_SERVIPHAR_ID]:
@@ -240,8 +240,27 @@ def insert_central_codes(df, cent_id, cent_name):
                            'Condition_commerciale_' + cent_name]]
         df_temp['supplier_id'] = np.nan
     elif cent_id == constant.SOURCE_DIRECT_ID:
-        df_temp = df_temp[['produit_id', 'Code_' + cent_name, 'Dénomination_' + cent_name, 'laboratoire_id']]
+        df_temp = df_temp[
+            ['laboratoire_id', 'produit_id', 'Code_' + cent_name, 'Dénomination_' + cent_name,
+             'Laboratoire_' + cent_name]]
+        df_temp['Laboratoire_' + cent_name] = pd.to_numeric(df_temp['Laboratoire_' + cent_name])
         df_temp['cirrina_pricing_condition_id'] = np.nan
+
+        # Keep only rows with same supplier for product and product code, log others
+        df_wrong_supplier = df_temp[
+            df_temp['laboratoire_id'].isnull() | df_temp['Laboratoire_' + cent_name].isnull() | (
+                    df_temp['laboratoire_id'] != df_temp['Laboratoire_' + cent_name])]
+        for index, row in df_wrong_supplier.iterrows():
+            df_logs = df_logs.append(
+                pd.DataFrame([[os.path.basename(f), row['produit_id'], 'Erreur',
+                               f"Laboratoire (ID {row['laboratoire_id']}) différent de celui du code produit "
+                               f"{row['Code_' + cent_name]} (ID {row['Laboratoire_' + cent_name]})"]
+                              ]),
+                ignore_index=True)
+
+        df_temp = df_temp[df_temp['laboratoire_id'].notnull() & df_temp['Laboratoire_' + cent_name].notnull() & (
+                    df_temp['laboratoire_id'] == df_temp['Laboratoire_' + cent_name])]
+
     else:
         df_temp = df_temp[['produit_id', 'Code_' + cent_name, 'Dénomination_' + cent_name]]
         df_temp['cirrina_pricing_condition_id'] = np.nan
@@ -418,8 +437,6 @@ def process():
     df_products['produit_id'] = pd.to_numeric(df_products['produit_id'])
     df_products['laboratoire_id'] = pd.to_numeric(df_products['laboratoire_id'])
 
-    df.drop(columns=['code_gtin', 'code_gtin_autre', 'famille_therapeutique_id', 'denomination',
-                     'conditionnement', 'laboratoire_id', 'obsolete', 'invisible'], inplace=True)
     temp = pd.merge(df[df['Id'].isnull()], df_products,
                     left_on=['Code GTIN', 'Autre code GTIN', 'ID classe thérapeutique', 'Dénomination',
                              'Conditionnement', 'Laboratoire', 'Obsolète', 'Invisible'],
@@ -512,7 +529,7 @@ if __name__ == "__main__":
         os.makedirs(historicDir, exist_ok=True)
 
         # Create empty logs dataframes
-        df_logs = pd.DataFrame(columns=['Fichier', 'ID Produit', 'Type', 'Description'])
+        df_logs = pd.DataFrame()
         errors_file = os.path.join(logDir, "products_errors.xlsx")
 
         for f in glob.glob(os.path.join(initDir, '*.[xX][lL][sS][xX]')):
@@ -561,6 +578,7 @@ if __name__ == "__main__":
         # Create Excel file of products errors
         if len(df_logs) > 0:
             os.makedirs(logDir, exist_ok=True)
+            df_logs.columns = ['Fichier', 'ID Produit', 'Type', 'Description']
             create_excel_file(os.path.join(logDir, "products_errors.xlsx"),
                               df_logs.drop_duplicates(), append=False)
             print('WARNING : there are an error file !')
