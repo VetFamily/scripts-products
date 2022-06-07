@@ -59,29 +59,7 @@ def process_products():
         df_final = pd.DataFrame(columns=['Id', 'Dénomination_temp', 'Conditionnement_temp', 'Laboratoire_temp',
                                          'Obsolète_temp', 'Invisible_temp', 'ID classe thérapeutique_temp', 'Code GTIN',
                                          'Autre code GTIN', 'ID classe thérapeutique', 'Dénomination',
-                                         'Conditionnement', 'Laboratoire', 'Obsolète', 'Invisible', 'Types', 'Espèces',
-                                         'Code_Alcyon', 'Dénomination_Alcyon', 'Tarif_Alcyon',
-                                         'Code_Centravet', 'Dénomination_Centravet', 'Tarif_Centravet',
-                                         'Code_Coveto', 'Dénomination_Coveto', 'Tarif_Coveto',
-                                         'Code_Alibon', 'Dénomination_Alibon', 'Tarif_Alibon',
-                                         'Code_Vetapro', 'Dénomination_Vetapro', 'Tarif_Vetapro',
-                                         'Code_Vetys pharma', 'Dénomination_Vetys pharma', 'Tarif_Vetys pharma',
-                                         'Code_Hippocampe', 'Dénomination_Hippocampe', 'Tarif_Hippocampe',
-                                         'Code_Agripharm', 'Dénomination_Agripharm', 'Tarif_Agripharm',
-                                         'Code_Elvetis', 'Dénomination_Elvetis', 'Tarif_Elvetis',
-                                         'Code_Longimpex', 'Dénomination_Longimpex', 'Tarif_Longimpex',
-                                         'Code_Direct', 'Dénomination_Direct', 'Tarif_Direct',
-                                         'Code_Cedivet', 'Dénomination_Cedivet', 'Tarif_Cedivet',
-                                         'Code_Covetrus', 'Dénomination_Covetrus', 'Tarif_Covetrus',
-                                         'Code_Apoex', 'Dénomination_Apoex', 'Tarif_Apoex',
-                                         'Code_Kruuse', 'Dénomination_Kruuse', 'Tarif_Kruuse',
-                                         'Code_Apotek1', 'Dénomination_Apotek1', 'Tarif_Apotek1',
-                                         'Code_Cirrina', 'Dénomination_Cirrina', 'Tarif_Cirrina',
-                                         'Condition_commerciale_Cirrina',
-                                         'Code_Serviphar', 'Dénomination_Serviphar', 'Tarif_Serviphar',
-                                         'Condition_commerciale_Serviphar',
-                                         'Code_Soleomed', 'Dénomination_Soleomed', 'Tarif_Soleomed',
-                                         'Code_Veso', 'Dénomination_Veso', 'Tarif_Veso'])
+                                         'Conditionnement', 'Laboratoire', 'Obsolète', 'Invisible', 'Types', 'Espèces'])
 
         # Search existing products in database
         query_products = text("""
@@ -197,6 +175,11 @@ def process_products():
                                    'ID classe thérapeutique', 'Dénomination', 'Conditionnement', 'Laboratoire', 'Obsolète',
                                    'Invisible', 'Types', 'Espèces', 'Code_' + cent_name, 'Dénomination_' + cent_name,
                                    'Tarif_' + cent_name]
+
+                # remove empty 'useless' columns
+                for col in ['Code_' + cent_name, 'Dénomination_' + cent_name, 'Tarif_' + cent_name]:
+                    if col in df_temp.columns and df_temp[col].isnull().all():
+                        del df_temp[col]
 
                 df_final = pd.concat([df_final, df_temp.drop_duplicates()], axis=0, sort=False, ignore_index=True)
             else:

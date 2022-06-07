@@ -283,9 +283,7 @@ def insert_central_codes(df, cent_id, cent_name):
     df_cp['cirrina_pricing_condition_id'] = pd.to_numeric(df_cp['cirrina_pricing_condition_id'])
     df_cp['supplier_id'] = pd.to_numeric(df_cp['supplier_id'])
     df_temp = \
-        pd.merge(df_temp, df_cp, on=['code_produit',
-                                     'cirrina_pricing_condition_id'] if cent_id != constant.SOURCE_DIRECT_ID else [
-            'code_produit', 'cirrina_pricing_condition_id', 'supplier_id'], how='left')
+        pd.merge(df_temp, df_cp, on=['code_produit', 'cirrina_pricing_condition_id', 'supplier_id'], how='left')
     del df_cp
 
     if country_id != 1:
@@ -320,9 +318,7 @@ def insert_central_codes(df, cent_id, cent_name):
     df_cp['cirrina_pricing_condition_id'] = pd.to_numeric(df_cp['cirrina_pricing_condition_id'])
     df_cp['supplier_id'] = pd.to_numeric(df_cp['supplier_id'])
     df_temp_new = \
-        pd.merge(df_temp_new, df_cp, on=['code_produit',
-                                         'cirrina_pricing_condition_id'] if cent_id != constant.SOURCE_DIRECT_ID else [
-            'code_produit', 'cirrina_pricing_condition_id', 'supplier_id'], how='left')
+        pd.merge(df_temp_new, df_cp, on=['code_produit', 'cirrina_pricing_condition_id', 'supplier_id'], how='left')
     del df_cp
 
     if len(df_temp_new) > 0:
