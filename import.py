@@ -46,6 +46,16 @@ def check_values(values, ref):
         raise ValueError(f"Unexpected value(s) in column {values.name}: {diff}")
 
 
+def check_unique_code(df) :
+    """
+    Check that product codes for each distributor are unique.
+    """
+    filter_col = [col for col in df if col.startswith('Code_')]
+    for col in filter_col :
+        if not df[col].is_unique():
+            raise ValueError(f"non-unique codes in column {col}")
+
+
 def check_dataframe(df, con):
     """
     Perform multiple checks on dataframe originating
@@ -84,6 +94,9 @@ def check_dataframe(df, con):
             con
         )
         check_values(pd.to_numeric(df['ID classe thérapeutique']), familles['id'])
+
+        # check that codes for each distributors are unique
+        check_unique_code(df)
 
 
 def insert_new_product(df):
