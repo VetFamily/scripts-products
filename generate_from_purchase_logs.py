@@ -208,7 +208,7 @@ def process_products():
         df_temp = df_group.copy()
         df_products_temp = df_products.copy()
 
-        if source_id != constant.SOURCE_CIRRINA_ID:
+        if source_id not in [constant.SOURCE_CIRRINA_ID, constant.SOURCE_HEILAND_ID]:
             df_products_temp['code_gtin'] = pd.to_numeric(df_products_temp['code_gtin'], errors="coerce")
             df_temp['product_gtin'] = pd.to_numeric(df_temp['product_gtin'], errors="coerce")
 
