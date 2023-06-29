@@ -52,7 +52,7 @@ def check_unique_code(df) :
     """
     filter_col = [col for col in df if col.startswith('Code_')]
     for col in filter_col :
-        if not df[col].is_unique():
+        if not df[col].dropna().is_unique:
             raise ValueError(f"non-unique codes in column {col}")
 
 
