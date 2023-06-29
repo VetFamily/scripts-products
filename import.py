@@ -423,6 +423,8 @@ def process():
 
     # Insert new products
     df = insert_new_product(df)
+    df.drop(columns=['code_gtin', 'code_gtin_autre', 'famille_therapeutique_id', 'denomination', 'conditionnement',
+                     'laboratoire_id', 'obsolete', 'invisible'], inplace=True)
 
     # Add products IDs
     query_products = text("""
@@ -440,7 +442,6 @@ def process():
                               'conditionnement', 'laboratoire_id', 'obsolete', 'invisible'], how='left')
 
     temp_not_null = df[df['Id'].notnull()].copy()
-    temp_not_null.drop(columns=['laboratoire_id'], inplace=True)
     df = pd.concat([temp, pd.merge(temp_not_null, df_products[['produit_id', 'laboratoire_id']],
                                    left_on=['Id'],
                                    right_on=['produit_id'], how='left')], axis=0, sort=False, ignore_index=True)
