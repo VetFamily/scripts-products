@@ -48,7 +48,7 @@ def insert_source_code(df, source_id):
     df_tmp['cirrina_pricing_condition_id'] = pd.to_numeric(df_tmp['cirrina_pricing_condition_id'])
     df_tmp['laboratoire_id'] = pd.to_numeric(df_tmp['laboratoire_id'])
 
-    if source_id != constant.SOURCE_DIRECT_ID:
+    if source_id not in [constant.SOURCE_DIRECT_ID, constant.SOURCE_HEILAND_ID]:
         df_source_tmp = \
             pd.merge(df_source_tmp, df_tmp.drop(columns=['laboratoire_id']),
                      on=['product_code', 'cirrina_pricing_condition_id'], how='left')
@@ -213,7 +213,7 @@ def process_products():
             df_temp['product_gtin'] = pd.to_numeric(df_temp['product_gtin'], errors="coerce")
 
         # Laboratories
-        if source_id != constant.SOURCE_DIRECT_ID:
+        if source_id not in [constant.SOURCE_DIRECT_ID]:
             # Search existing laboratories in database
             query_labs = text("""
                 select laboratoire_id, nom_laboratoire as laboratoire, cirrina_pricing_condition_id
@@ -271,7 +271,7 @@ def process_products():
         )
 
         # when no match: new lookup using product code (only for source_id DIRECT and KRUUSE)
-        if source_id in [constant.SOURCE_DIRECT_ID, constant.SOURCE_KRUUSE_ID]:
+        if source_id in [constant.SOURCE_DIRECT_ID, constant.SOURCE_HEILAND_ID, constant.SOURCE_KRUUSE_ID]:
             df_temp_not_matched = df_temp[~df_temp['temp_id'].isin(df_source['temp_id'])]
 
             df_product_codes = df_product_sources[df_product_sources['centrale_id'] == source_id]
@@ -343,11 +343,14 @@ def process_products():
                 (df_product_sources["centrale_id"] == source_id) &
                 (df_product_sources["country_id"] == country_id)
                 ].drop(
-                columns=['produit_id', 'country_id', 'laboratoire_id'] if source_id != constant.SOURCE_DIRECT_ID else [
+                columns=['produit_id', 'country_id', 'laboratoire_id'] if source_id not in [constant.SOURCE_DIRECT_ID,
+                                                                                            constant.SOURCE_HEILAND_ID] else [
                     'produit_id', 'country_id']),
-            left_on=['product_code', 'cirrina_pricing_condition_id'] if source_id != constant.SOURCE_DIRECT_ID else [
+            left_on=['product_code', 'cirrina_pricing_condition_id'] if source_id not in [constant.SOURCE_DIRECT_ID,
+                                                                                          constant.SOURCE_HEILAND_ID] else [
                 'product_code', 'cirrina_pricing_condition_id', 'laboratoire_id'],
-            right_on=['code_produit', 'cirrina_pricing_condition_id'] if source_id != constant.SOURCE_DIRECT_ID else [
+            right_on=['code_produit', 'cirrina_pricing_condition_id'] if source_id not in [constant.SOURCE_DIRECT_ID,
+                                                                                           constant.SOURCE_HEILAND_ID] else [
                 'code_produit', 'cirrina_pricing_condition_id', 'laboratoire_id'],
             how='left',
             indicator=True
@@ -381,16 +384,18 @@ def process_products():
             df_source_merged = df_source_copy.reset_index().merge(
                 types_especes_restricted[types_especes_restricted['type_source'].notnull()], how='left',
                 left_on=['laboratoire_id',
-                         'product_type'] if source_id == constant.SOURCE_DIRECT_ID else 'product_type',
+                         'product_type'] if source_id in [constant.SOURCE_DIRECT_ID,
+                                                          constant.SOURCE_HEILAND_ID] else 'product_type',
                 right_on=['supplier_id',
-                          'type_source'] if source_id == constant.SOURCE_DIRECT_ID else 'type_source').set_index(
+                          'type_source'] if source_id in [constant.SOURCE_DIRECT_ID,
+                                                          constant.SOURCE_HEILAND_ID] else 'type_source').set_index(
                 'index')
 
             df_source['types'] = df_source_merged['new_type']
             df_source['especes'] = df_source_merged['new_especes']
 
         if len(types_especes_restricted[types_especes_restricted['type_source'].isnull()]) > 0:
-            if source_id == constant.SOURCE_DIRECT_ID:
+            if source_id in [constant.SOURCE_DIRECT_ID, constant.SOURCE_HEILAND_ID]:
                 df_source_merged = df_source_copy.reset_index().merge(
                     types_especes_restricted[types_especes_restricted['type_source'].isnull()],
                     how='left',
@@ -426,7 +431,7 @@ def process_products():
             columns.append('cirrina_pricing_condition_id')
             columns_name.append('Condition_commerciale_' + source_name)
 
-        if source_id in [constant.SOURCE_DIRECT_ID]:
+        if source_id in [constant.SOURCE_DIRECT_ID, constant.SOURCE_HEILAND_ID]:
             df_source['supplier_id'] = df_source['laboratoire_id']
             columns.append('supplier_id')
             columns_name.append('Laboratoire_' + source_name)

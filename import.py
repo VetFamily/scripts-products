@@ -50,10 +50,16 @@ def check_unique_code(df) :
     """
     Check that product codes for each distributor are unique.
     """
+    special_col = {'Code_Direct': 'Laboratoire_Direct', 'Code_Heiland': 'Laboratoire_Heiland'}
     filter_col = [col for col in df if col.startswith('Code_')]
-    for col in filter_col :
-        if not df[col].dropna().is_unique:
-            raise ValueError(f"non-unique codes in column {col}")
+    for col in filter_col:
+        if col in special_col.keys():
+            for supplier_name, df_group in df.groupby(special_col[col]):
+                if not df_group[col].dropna().is_unique:
+                    raise ValueError(f"non-unique codes in column {col} for supplier {supplier_name}")
+        else:
+            if not df[col].dropna().is_unique:
+                raise ValueError(f"non-unique codes in column {col}")
 
 
 def check_dataframe(df, con):
@@ -252,14 +258,14 @@ def insert_central_codes(df, cent_id, cent_name):
         df_temp = df_temp[['produit_id', 'Code_' + cent_name, 'Dénomination_' + cent_name,
                            'Condition_commerciale_' + cent_name]]
         df_temp['supplier_id'] = np.nan
-    elif cent_id == constant.SOURCE_DIRECT_ID:
+    elif cent_id in [constant.SOURCE_DIRECT_ID]:
         df_temp = df_temp[
             ['laboratoire_id', 'produit_id', 'Code_' + cent_name, 'Dénomination_' + cent_name,
              'Laboratoire_' + cent_name]]
         df_temp['Laboratoire_' + cent_name] = pd.to_numeric(df_temp['Laboratoire_' + cent_name])
         df_temp['cirrina_pricing_condition_id'] = np.nan
 
-        # Keep only rows with same supplier for product and product code, log others
+        # Keep only rows with same supplier for product and product code, log others => not for Heiland
         df_wrong_supplier = df_temp[
             df_temp['laboratoire_id'].isnull() | df_temp['Laboratoire_' + cent_name].isnull() | (
                     df_temp['laboratoire_id'] != df_temp['Laboratoire_' + cent_name])]
@@ -273,6 +279,26 @@ def insert_central_codes(df, cent_id, cent_name):
 
         df_temp = df_temp[df_temp['laboratoire_id'].notnull() & df_temp['Laboratoire_' + cent_name].notnull() & (
                     df_temp['laboratoire_id'] == df_temp['Laboratoire_' + cent_name])]
+
+    elif cent_id in [constant.SOURCE_HEILAND_ID]:
+        df_temp = df_temp[
+            ['laboratoire_id', 'produit_id', 'Code_' + cent_name, 'Dénomination_' + cent_name,
+             'Laboratoire_' + cent_name]]
+        df_temp['Laboratoire_' + cent_name] = pd.to_numeric(df_temp['Laboratoire_' + cent_name])
+        df_temp['cirrina_pricing_condition_id'] = np.nan
+
+        # Keep only rows with same supplier for product and product code, log others => not for Heiland
+        df_wrong_supplier = df_temp[
+            df_temp['laboratoire_id'].isnull() | df_temp['Laboratoire_' + cent_name].isnull()]
+        for index, row in df_wrong_supplier.iterrows():
+            df_logs = df_logs.append(
+                pd.DataFrame([[os.path.basename(f), row['produit_id'], 'Erreur',
+                               f"Laboratoire (ID {row['laboratoire_id']}) différent de celui du code produit "
+                               f"{row['Code_' + cent_name]} (ID {row['Laboratoire_' + cent_name]})"]
+                              ]),
+                ignore_index=True)
+
+        df_temp = df_temp[df_temp['laboratoire_id'].notnull() & df_temp['Laboratoire_' + cent_name].notnull()]
 
     else:
         df_temp = df_temp[['produit_id', 'Code_' + cent_name, 'Dénomination_' + cent_name]]
