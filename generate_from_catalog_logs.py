@@ -95,6 +95,7 @@ def process_products():
             from produits
             where code_gtin is not null"""
         )
+
         df_products = pd.read_sql_query(query_products, connection)
         df_products["code_gtin"] = pd.to_numeric(
             df_products["code_gtin"], errors="coerce"
@@ -289,8 +290,6 @@ def process_products():
                         "famille_therapeutique_id",
                         "denomination",
                         "conditionnement",
-                        "value_packaging",
-                        "type_packaging",
                         "laboratoire_id",
                         "obsolete",
                         "invisible",
@@ -301,6 +300,17 @@ def process_products():
                         "prix_unitaire_hors_promo",
                     ]
                 ]
+
+                df_temp["value_packaging"] = ""
+                df_temp["type_packaging"] = ""
+
+                # extract & add value and type packaging
+                packaging.add_packaging(df_temp, country_id)
+                df_temp["value_packaging"] = df_temp["value_packaging"].str.replace(
+                    ",", ".", regex=False
+                )
+                df_temp["value_packaging"] = df_temp["value_packaging"].astype("float")
+
                 df_temp.columns = [
                     "Id",
                     "Dénomination_temp",
@@ -314,8 +324,6 @@ def process_products():
                     "ID classe thérapeutique",
                     "Dénomination",
                     "Conditionnement",
-                    "Value packaging",
-                    "Type packaging",
                     "Laboratoire",
                     "Obsolète",
                     "Invisible",
@@ -324,6 +332,8 @@ def process_products():
                     "Code_" + cent_name,
                     "Dénomination_" + cent_name,
                     "Tarif_" + cent_name,
+                    "Value packaging",
+                    "Type packaging",
                 ]
 
                 # remove empty 'useless' columns
@@ -347,13 +357,6 @@ def process_products():
         # Sort dataframe
         df_final = df_final.sort_values(by=["Laboratoire", "Code GTIN"])
 
-        # extract & add value and type packaging
-        packaging.add_packaging(df_final, country_id)
-        df_final["value_packaging"] = df_final["value_packaging"].str.replace(
-            ",", ".", regex=False
-        )
-        df_final["value_packaging"] = df_final["value_packaging"].astype("float")
-
         logging.debug("Generate files of new products")
         writer = pd.ExcelWriter(
             products_out_dir + now + "_" + country_name + "_new_products_catalogs.xlsx",
@@ -365,19 +368,19 @@ def process_products():
         red_format = workbook.add_format()
         red_format.set_bg_color("red")
         for col in [
-            "R",
-            "U",
-            "X",
-            "AA",
-            "AD",
-            "AG",
-            "AJ",
-            "AM",
-            "AP",
-            "AS",
-            "AV",
-            "AY",
-            "BB",
+            "T",
+            "W",
+            "Z",
+            "AC",
+            "AF",
+            "AI",
+            "AL",
+            "AO",
+            "AR",
+            "AU",
+            "AX",
+            "BA",
+            "BD",
         ]:
             worksheet.conditional_format(
                 col + "2:" + col + str(len(df_final.index)),
