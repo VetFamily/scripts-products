@@ -19,8 +19,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine.url import URL
 from sqlalchemy.sql import text
 
+from src.utils import packaging
 from config import config
-from src.common import constant, common, packaging
+from src.common import constant, common
 
 
 def get_arguments():

@@ -3,4 +3,9 @@ venv
 *.pyc
 *.ini
 *.csv
-*.xlsx
+
+encours/
+fichiers/
+historiques/
+logs/
+
