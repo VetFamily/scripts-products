@@ -26,10 +26,12 @@ from src.common import common, constant
 
 
 def getArguments():
-    parser = argparse.ArgumentParser(description='Lancement du traitement du fichier de valorisations Vetapro')
+    parser = argparse.ArgumentParser(
+        description="Lancement du traitement du fichier de valorisations Vetapro"
+    )
     # parser.add_argument('-o', '--output', help='Output file name', default='stdout')
-    required_args = parser.add_argument_group('required named arguments')
-    required_args.add_argument('-c', '--country', help='ID of country', required=True)
+    required_args = parser.add_argument_group("required named arguments")
+    required_args.add_argument("-c", "--country", help="ID of country", required=True)
     return parser.parse_args()
 
 
@@ -46,17 +48,22 @@ def check_values(values, ref):
         raise ValueError(f"Unexpected value(s) in column {values.name}: {diff}")
 
 
-def check_unique_code(df) :
+def check_unique_code(df):
     """
     Check that product codes for each distributor are unique.
     """
-    special_col = {'Code_Direct': 'Laboratoire_Direct', 'Code_Heiland': 'Laboratoire_Heiland'}
-    filter_col = [col for col in df if col.startswith('Code_')]
+    special_col = {
+        "Code_Direct": "Laboratoire_Direct",
+        "Code_Heiland": "Laboratoire_Heiland",
+    }
+    filter_col = [col for col in df if col.startswith("Code_")]
     for col in filter_col:
         if col in special_col.keys():
             for supplier_name, df_group in df.groupby(special_col[col]):
                 if not df_group[col].dropna().is_unique:
-                    raise ValueError(f"non-unique codes in column {col} for supplier {supplier_name}")
+                    raise ValueError(
+                        f"non-unique codes in column {col} for supplier {supplier_name}"
+                    )
         else:
             if not df[col].dropna().is_unique:
                 raise ValueError(f"non-unique codes in column {col}")
@@ -71,35 +78,38 @@ def check_dataframe(df, con):
     df : pandas dataframe
     con : connection to the postgreSQL database
     """
-    df = df[df['Id'].isnull()]
+    df = df[df["Id"].isnull()]
 
     if len(df) > 0:
         # check that all rows have name, packaging and supplier
-        for col in ['Dénomination', 'Laboratoire', 'Types', 'Espèces']:
+        for col in ["Dénomination", "Laboratoire", "Types", "Espèces"]:
             if df[col].isnull().values.any():
                 raise ValueError(f"Empty value(s) in column {col}")
 
         # check that all values in 'Types' column exist in table 'types'
-        types = pd.read_sql_query("select code as nom from types where obsolete is false", con)
-        check_values(df['Types'], types['nom'])
+        types = pd.read_sql_query(
+            "select code as nom from types where obsolete is false", con
+        )
+        check_values(df["Types"], types["nom"])
 
         # check that all values in 'Espèces' column exist in table 'especes'
-        especes = pd.read_sql_query("select nom from especes where obsolete is false", con)
-        df_series = df['Espèces'].str.split('|').apply(pd.Series).stack()
-        df_series.name = 'nom'
-        check_values(df_series, especes['nom'])
+        especes = pd.read_sql_query(
+            "select nom from especes where obsolete is false", con
+        )
+        df_series = df["Espèces"].str.split("|").apply(pd.Series).stack()
+        df_series.name = "nom"
+        check_values(df_series, especes["nom"])
 
         # check that all values in columns 'Obsolète' and 'Invisible' are either 'True' or 'False'
-        check_values(df['Obsolète'], ['True', 'False'])
-        check_values(df['Invisible'], ['True', 'False'])
+        check_values(df["Obsolète"], ["True", "False"])
+        check_values(df["Invisible"], ["True", "False"])
 
         # check that all values in 'ID classe thérapeutique' column exist in table
         #   'familles_therapeutiques'
         familles = pd.read_sql_query(
-            "select id from familles_therapeutiques where obsolete is false",
-            con
+            "select id from familles_therapeutiques where obsolete is false", con
         )
-        check_values(pd.to_numeric(df['ID classe thérapeutique']), familles['id'])
+        check_values(pd.to_numeric(df["ID classe thérapeutique"]), familles["id"])
 
         # check that codes for each distributors are unique
         check_unique_code(df)
@@ -107,39 +117,53 @@ def check_dataframe(df, con):
 
 def insert_new_product(df):
     global count_of_new_products
-    col_names = ['code_gtin', 'code_gtin_autre', 'famille_therapeutique_id', 'denomination',
-                 'conditionnement', 'laboratoire_id', 'obsolete', 'invisible']
-    col_labels = ['Code GTIN', 'Autre code GTIN', 'ID classe thérapeutique', 'Dénomination',
-                  'Conditionnement', 'Laboratoire', 'Obsolète', 'Invisible']
+    col_names = [
+        "code_gtin",
+        "code_gtin_autre",
+        "famille_therapeutique_id",
+        "denomination",
+        "conditionnement",
+        "value_packaging",
+        "type_packaging",
+        "laboratoire_id",
+        "obsolete",
+        "invisible",
+    ]
+    col_labels = [
+        "Code GTIN",
+        "Autre code GTIN",
+        "ID classe thérapeutique",
+        "Dénomination",
+        "Conditionnement",
+        "Value packaging",
+        "Type packaging",
+        "Laboratoire",
+        "Obsolète",
+        "Invisible",
+    ]
 
     # step 1: update df['Id'] when same product found in 'produits' table
 
     produits = pd.read_sql_query(
         """select id, code_gtin, code_gtin_autre, famille_therapeutique_id, denomination,
-                  conditionnement, laboratoire_id, obsolete, invisible
+                  conditionnement, value_packaging, type_packaging, laboratoire_id, obsolete, invisible
            from produits""",
-        connection
+        connection,
     )
 
-    df = pd.merge(
-        df,
-        produits,
-        how='left',
-        left_on=col_labels,
-        right_on=col_names
-    )
-    df.loc[df['Id'].isnull(), 'Id'] = df['id']
-    del df['id']
+    df = pd.merge(df, produits, how="left", left_on=col_labels, right_on=col_names)
+    df.loc[df["Id"].isnull(), "Id"] = df["id"]
+    del df["id"]
 
     # step 2: insert new products
 
-    df_temp = df[df['Id'].isnull()].copy()
+    df_temp = df[df["Id"].isnull()].copy()
 
     df_temp = df_temp[col_labels]
     df_temp.drop_duplicates(inplace=True)
     df_temp.columns = col_names
     # df_temp.loc[df_temp['Code GTIN'].notnull() & (str(df_temp['Code GTIN']) == ''), 'Code GTIN'] = np.nan
-    df_temp.to_sql('produits', engine, if_exists='append', index=False, chunksize=1000)
+    df_temp.to_sql("produits", engine, if_exists="append", index=False, chunksize=1000)
     count_of_new_products = len(df_temp)
 
     del df_temp
@@ -150,27 +174,41 @@ def insert_new_product(df):
 def insert_types(df):
     global df_logs, count_of_types
 
-    df_temp = df[df['Id'].isnull()].copy()
-    df_temp = df_temp[['produit_id', 'Types']]
+    df_temp = df[df["Id"].isnull()].copy()
+    df_temp = df_temp[["produit_id", "Types"]]
 
     # Log products without types
-    df_without_types = df_temp[df_temp['Types'].isnull()]
+    df_without_types = df_temp[df_temp["Types"].isnull()]
     for index, row in df_without_types.iterrows():
         df_logs = df_logs.append(
-            pd.DataFrame([[os.path.basename(f), row['produit_id'], 'Erreur', 'Pas de type renseigné']
-                          ]),
-            ignore_index=True)
+            pd.DataFrame(
+                [
+                    [
+                        os.path.basename(f),
+                        row["produit_id"],
+                        "Erreur",
+                        "Pas de type renseigné",
+                    ]
+                ]
+            ),
+            ignore_index=True,
+        )
 
-    df_temp = df_temp[df_temp['Types'].notnull()]
+    df_temp = df_temp[df_temp["Types"].notnull()]
 
     if len(df_temp) > 0:
-        df_types = pd.DataFrame(df_temp['Types'].str.split('|').tolist(), index=df_temp['produit_id']).stack()
-        df_types = df_types.reset_index()[[0, 'produit_id']]
-        df_types.columns = ['type_id', 'produit_id']
+        df_types = pd.DataFrame(
+            df_temp["Types"].str.split("|").tolist(), index=df_temp["produit_id"]
+        ).stack()
+        df_types = df_types.reset_index()[[0, "produit_id"]]
+        df_types.columns = ["type_id", "produit_id"]
         df_types = df_types.replace(
-            {'type_id': {"ALI": 1, "ATB": 2, "DIV": 3, "MAT": 4, "MED": 5, "BIO": 6}})
+            {"type_id": {"ALI": 1, "ATB": 2, "DIV": 3, "MAT": 4, "MED": 5, "BIO": 6}}
+        )
         df_types.drop_duplicates(inplace=True)
-        df_types.to_sql('produit_type', engine, if_exists='append', index=False, chunksize=1000)
+        df_types.to_sql(
+            "produit_type", engine, if_exists="append", index=False, chunksize=1000
+        )
         count_of_types = len(df_types)
 
         del df_types
@@ -181,20 +219,29 @@ def insert_types(df):
 def update_product(df):
     global count_of_upd_products
 
-    df_temp = df[df['Id'].notnull() & (df['Code GTIN'].notnull() | df['Autre code GTIN'].notnull())].copy()
+    df_temp = df[
+        df["Id"].notnull()
+        & (df["Code GTIN"].notnull() | df["Autre code GTIN"].notnull())
+    ].copy()
 
     for index, row in df_temp.iterrows():
         update = False
 
-        if pd.notnull(row['Code GTIN']):
-            query = text("""UPDATE produits SET code_gtin = :code_gtin WHERE id = :id""")
-            res = connection.execute(query, code_gtin=row['Code GTIN'], id=row['Id'])
+        if pd.notnull(row["Code GTIN"]):
+            query = text(
+                """UPDATE produits SET code_gtin = :code_gtin WHERE id = :id"""
+            )
+            res = connection.execute(query, code_gtin=row["Code GTIN"], id=row["Id"])
             if res.rowcount == 1:
                 update = True
 
-        if pd.notnull(row['Autre code GTIN']):
-            query = text("""UPDATE produits SET code_gtin_autre = :code_gtin WHERE id = :id""")
-            res = connection.execute(query, code_gtin=row['Autre code GTIN'], id=row['Id'])
+        if pd.notnull(row["Autre code GTIN"]):
+            query = text(
+                """UPDATE produits SET code_gtin_autre = :code_gtin WHERE id = :id"""
+            )
+            res = connection.execute(
+                query, code_gtin=row["Autre code GTIN"], id=row["Id"]
+            )
             if res.rowcount == 1:
                 update = True
 
@@ -207,27 +254,50 @@ def update_product(df):
 def insert_species(df):
     global df_logs, count_of_species
 
-    df_temp = df[df['Id'].isnull()].copy()
-    df_temp = df_temp[['produit_id', 'Espèces']]
+    df_temp = df[df["Id"].isnull()].copy()
+    df_temp = df_temp[["produit_id", "Espèces"]]
 
     # Log products without species
-    df_without_species = df_temp[df_temp['Espèces'].isnull()]
+    df_without_species = df_temp[df_temp["Espèces"].isnull()]
     for index, row in df_without_species.iterrows():
         df_logs = df_logs.append(
-            pd.DataFrame([[os.path.basename(f), row['produit_id'], 'Erreur', 'Pas d\'espèce renseignée']
-                          ]),
-            ignore_index=True)
+            pd.DataFrame(
+                [
+                    [
+                        os.path.basename(f),
+                        row["produit_id"],
+                        "Erreur",
+                        "Pas d'espèce renseignée",
+                    ]
+                ]
+            ),
+            ignore_index=True,
+        )
 
-    df_temp = df_temp[df_temp['Espèces'].notnull()]
+    df_temp = df_temp[df_temp["Espèces"].notnull()]
 
     if len(df_temp) > 0:
-        df_species = pd.DataFrame(df_temp['Espèces'].str.split('|').tolist(), index=df_temp['produit_id']).stack()
-        df_species = df_species.reset_index()[[0, 'produit_id']]
-        df_species.columns = ['espece_id', 'produit_id']
+        df_species = pd.DataFrame(
+            df_temp["Espèces"].str.split("|").tolist(), index=df_temp["produit_id"]
+        ).stack()
+        df_species = df_species.reset_index()[[0, "produit_id"]]
+        df_species.columns = ["espece_id", "produit_id"]
         df_species = df_species.replace(
-            {'espece_id': {"Canine": 1, "Equine": 2, "Rurale": 3, "Porc": 4, "Volaille": 5, "Autres": 6}})
+            {
+                "espece_id": {
+                    "Canine": 1,
+                    "Equine": 2,
+                    "Rurale": 3,
+                    "Porc": 4,
+                    "Volaille": 5,
+                    "Autres": 6,
+                }
+            }
+        )
         df_species.drop_duplicates(inplace=True)
-        df_species.to_sql('espece_produit', engine, if_exists='append', index=False, chunksize=1000)
+        df_species.to_sql(
+            "espece_produit", engine, if_exists="append", index=False, chunksize=1000
+        )
         count_of_species = len(df_species)
 
         del df_species
@@ -239,134 +309,227 @@ def insert_central_codes(df, cent_id, cent_name):
     global df_logs
 
     # stop function early if necessary
-    if 'Code_' + cent_name not in df.columns:
+    if "Code_" + cent_name not in df.columns:
         return
 
     count = 0
-    date = pd.to_datetime("2016-01-01", format='%Y-%m-%d', errors='coerce')
+    date = pd.to_datetime("2016-01-01", format="%Y-%m-%d", errors="coerce")
 
-    df_temp = df[df['Code_' + cent_name].notnull()].copy()
+    df_temp = df[df["Code_" + cent_name].notnull()].copy()
 
     labels_dict = {
-        'Code_' + cent_name: 'code_produit',
-        'Dénomination_' + cent_name: 'nom',
-        'Condition_commerciale_' + cent_name: 'cirrina_pricing_condition_id',
-        'Laboratoire_' + cent_name: 'supplier_id'
+        "Code_" + cent_name: "code_produit",
+        "Dénomination_" + cent_name: "nom",
+        "Condition_commerciale_" + cent_name: "cirrina_pricing_condition_id",
+        "Laboratoire_" + cent_name: "supplier_id",
     }
 
     if cent_id in [constant.SOURCE_CIRRINA_ID, constant.SOURCE_SERVIPHAR_ID]:
-        df_temp = df_temp[['produit_id', 'Code_' + cent_name, 'Dénomination_' + cent_name,
-                           'Condition_commerciale_' + cent_name]]
-        df_temp['supplier_id'] = np.nan
+        df_temp = df_temp[
+            [
+                "produit_id",
+                "Code_" + cent_name,
+                "Dénomination_" + cent_name,
+                "Condition_commerciale_" + cent_name,
+            ]
+        ]
+        df_temp["supplier_id"] = np.nan
     elif cent_id in [constant.SOURCE_DIRECT_ID]:
         df_temp = df_temp[
-            ['laboratoire_id', 'produit_id', 'Code_' + cent_name, 'Dénomination_' + cent_name,
-             'Laboratoire_' + cent_name]]
-        df_temp['Laboratoire_' + cent_name] = pd.to_numeric(df_temp['Laboratoire_' + cent_name])
-        df_temp['cirrina_pricing_condition_id'] = np.nan
+            [
+                "laboratoire_id",
+                "produit_id",
+                "Code_" + cent_name,
+                "Dénomination_" + cent_name,
+                "Laboratoire_" + cent_name,
+            ]
+        ]
+        df_temp["Laboratoire_" + cent_name] = pd.to_numeric(
+            df_temp["Laboratoire_" + cent_name]
+        )
+        df_temp["cirrina_pricing_condition_id"] = np.nan
 
         # Keep only rows with same supplier for product and product code, log others => not for Heiland
         df_wrong_supplier = df_temp[
-            df_temp['laboratoire_id'].isnull() | df_temp['Laboratoire_' + cent_name].isnull() | (
-                    df_temp['laboratoire_id'] != df_temp['Laboratoire_' + cent_name])]
+            df_temp["laboratoire_id"].isnull()
+            | df_temp["Laboratoire_" + cent_name].isnull()
+            | (df_temp["laboratoire_id"] != df_temp["Laboratoire_" + cent_name])
+        ]
         for index, row in df_wrong_supplier.iterrows():
             df_logs = df_logs.append(
-                pd.DataFrame([[os.path.basename(f), row['produit_id'], 'Erreur',
-                               f"Laboratoire (ID {row['laboratoire_id']}) différent de celui du code produit "
-                               f"{row['Code_' + cent_name]} (ID {row['Laboratoire_' + cent_name]})"]
-                              ]),
-                ignore_index=True)
+                pd.DataFrame(
+                    [
+                        [
+                            os.path.basename(f),
+                            row["produit_id"],
+                            "Erreur",
+                            f"Laboratoire (ID {row['laboratoire_id']}) différent de celui du code produit "
+                            f"{row['Code_' + cent_name]} (ID {row['Laboratoire_' + cent_name]})",
+                        ]
+                    ]
+                ),
+                ignore_index=True,
+            )
 
-        df_temp = df_temp[df_temp['laboratoire_id'].notnull() & df_temp['Laboratoire_' + cent_name].notnull() & (
-                    df_temp['laboratoire_id'] == df_temp['Laboratoire_' + cent_name])]
+        df_temp = df_temp[
+            df_temp["laboratoire_id"].notnull()
+            & df_temp["Laboratoire_" + cent_name].notnull()
+            & (df_temp["laboratoire_id"] == df_temp["Laboratoire_" + cent_name])
+        ]
 
     elif cent_id in [constant.SOURCE_HEILAND_ID]:
         df_temp = df_temp[
-            ['laboratoire_id', 'produit_id', 'Code_' + cent_name, 'Dénomination_' + cent_name,
-             'Laboratoire_' + cent_name]]
-        df_temp['Laboratoire_' + cent_name] = pd.to_numeric(df_temp['Laboratoire_' + cent_name])
-        df_temp['cirrina_pricing_condition_id'] = np.nan
+            [
+                "laboratoire_id",
+                "produit_id",
+                "Code_" + cent_name,
+                "Dénomination_" + cent_name,
+                "Laboratoire_" + cent_name,
+            ]
+        ]
+        df_temp["Laboratoire_" + cent_name] = pd.to_numeric(
+            df_temp["Laboratoire_" + cent_name]
+        )
+        df_temp["cirrina_pricing_condition_id"] = np.nan
 
         # Keep only rows with same supplier for product and product code, log others => not for Heiland
         df_wrong_supplier = df_temp[
-            df_temp['laboratoire_id'].isnull() | df_temp['Laboratoire_' + cent_name].isnull()]
+            df_temp["laboratoire_id"].isnull()
+            | df_temp["Laboratoire_" + cent_name].isnull()
+        ]
         for index, row in df_wrong_supplier.iterrows():
             df_logs = df_logs.append(
-                pd.DataFrame([[os.path.basename(f), row['produit_id'], 'Erreur',
-                               f"Laboratoire (ID {row['laboratoire_id']}) différent de celui du code produit "
-                               f"{row['Code_' + cent_name]} (ID {row['Laboratoire_' + cent_name]})"]
-                              ]),
-                ignore_index=True)
+                pd.DataFrame(
+                    [
+                        [
+                            os.path.basename(f),
+                            row["produit_id"],
+                            "Erreur",
+                            f"Laboratoire (ID {row['laboratoire_id']}) différent de celui du code produit "
+                            f"{row['Code_' + cent_name]} (ID {row['Laboratoire_' + cent_name]})",
+                        ]
+                    ]
+                ),
+                ignore_index=True,
+            )
 
-        df_temp = df_temp[df_temp['laboratoire_id'].notnull() & df_temp['Laboratoire_' + cent_name].notnull()]
+        df_temp = df_temp[
+            df_temp["laboratoire_id"].notnull()
+            & df_temp["Laboratoire_" + cent_name].notnull()
+        ]
 
     else:
-        df_temp = df_temp[['produit_id', 'Code_' + cent_name, 'Dénomination_' + cent_name]]
-        df_temp['cirrina_pricing_condition_id'] = np.nan
-        df_temp['supplier_id'] = np.nan
+        df_temp = df_temp[
+            ["produit_id", "Code_" + cent_name, "Dénomination_" + cent_name]
+        ]
+        df_temp["cirrina_pricing_condition_id"] = np.nan
+        df_temp["supplier_id"] = np.nan
 
     df_temp.rename(columns=labels_dict, inplace=True)
-    df_temp['code_produit'] = df_temp['code_produit'].dropna().astype(str)
-    df_temp['nom'] = df_temp['nom'].dropna().astype(str)
-    df_temp['cirrina_pricing_condition_id'] = pd.to_numeric(df_temp['cirrina_pricing_condition_id'])
-    df_temp['supplier_id'] = pd.to_numeric(df_temp['supplier_id'])
+    df_temp["code_produit"] = df_temp["code_produit"].dropna().astype(str)
+    df_temp["nom"] = df_temp["nom"].dropna().astype(str)
+    df_temp["cirrina_pricing_condition_id"] = pd.to_numeric(
+        df_temp["cirrina_pricing_condition_id"]
+    )
+    df_temp["supplier_id"] = pd.to_numeric(df_temp["supplier_id"])
 
-    query_cp = text("""
+    query_cp = text(
+        """
                         SELECT id as centrale_produit_id, code_produit, cirrina_pricing_condition_id, supplier_id
                         FROM centrale_produit
                         WHERE centrale_id = :sourceId
                         AND country_id = :countryId
-                                                        """)
-    df_cp = pd.read_sql_query(query_cp, connection, params={'sourceId': cent_id, 'countryId': country_id})
-    df_cp['code_produit'] = df_cp['code_produit'].dropna().astype(str)
-    df_cp['cirrina_pricing_condition_id'] = pd.to_numeric(df_cp['cirrina_pricing_condition_id'])
-    df_cp['supplier_id'] = pd.to_numeric(df_cp['supplier_id'])
-    df_temp = \
-        pd.merge(df_temp, df_cp, on=['code_produit', 'cirrina_pricing_condition_id', 'supplier_id'], how='left')
+                                                        """
+    )
+    df_cp = pd.read_sql_query(
+        query_cp, connection, params={"sourceId": cent_id, "countryId": country_id}
+    )
+    df_cp["code_produit"] = df_cp["code_produit"].dropna().astype(str)
+    df_cp["cirrina_pricing_condition_id"] = pd.to_numeric(
+        df_cp["cirrina_pricing_condition_id"]
+    )
+    df_cp["supplier_id"] = pd.to_numeric(df_cp["supplier_id"])
+    df_temp = pd.merge(
+        df_temp,
+        df_cp,
+        on=["code_produit", "cirrina_pricing_condition_id", "supplier_id"],
+        how="left",
+    )
     del df_cp
 
     if country_id != 1:
         insert_product_country_label(df_temp, False)
 
-    df_temp_upd = df_temp[df_temp['centrale_produit_id'].notnull()].copy()
+    df_temp_upd = df_temp[df_temp["centrale_produit_id"].notnull()].copy()
 
     for index, row in df_temp_upd.iterrows():
         # Update code because it already exists
-        query_upd = text("""UPDATE centrale_produit SET produit_id = :prodId WHERE id = :id""")
-        res_upd = connection.execute(query_upd, id=row['centrale_produit_id'], prodId=row['produit_id'])
+        query_upd = text(
+            """UPDATE centrale_produit SET produit_id = :prodId WHERE id = :id"""
+        )
+        res_upd = connection.execute(
+            query_upd, id=row["centrale_produit_id"], prodId=row["produit_id"]
+        )
         if res_upd.rowcount != 1:
-            df_logs = df_logs.append(pd.DataFrame(
-                [[os.path.basename(f), row['produit_id'], 'Erreur', 'Code ' + cent_name + ' non mis à jour']]),
-                                     ignore_index=True)
+            df_logs = df_logs.append(
+                pd.DataFrame(
+                    [
+                        [
+                            os.path.basename(f),
+                            row["produit_id"],
+                            "Erreur",
+                            "Code " + cent_name + " non mis à jour",
+                        ]
+                    ]
+                ),
+                ignore_index=True,
+            )
         else:
             count += 1
 
-    df_temp_new = df_temp[df_temp['centrale_produit_id'].isnull()].copy()
+    df_temp_new = df_temp[df_temp["centrale_produit_id"].isnull()].copy()
 
     # Insert into centrale_produit
-    df_temp_new_cp = df_temp_new[['produit_id', 'code_produit', 'cirrina_pricing_condition_id', 'supplier_id']].copy()
-    df_temp_new_cp['centrale_id'] = cent_id
-    df_temp_new_cp['country_id'] = country_id
+    df_temp_new_cp = df_temp_new[
+        ["produit_id", "code_produit", "cirrina_pricing_condition_id", "supplier_id"]
+    ].copy()
+    df_temp_new_cp["centrale_id"] = cent_id
+    df_temp_new_cp["country_id"] = country_id
     df_temp_new_cp.drop_duplicates(inplace=True)
-    df_temp_new_cp.to_sql('centrale_produit', engine, if_exists='append', index=False, chunksize=1000)
+    df_temp_new_cp.to_sql(
+        "centrale_produit", engine, if_exists="append", index=False, chunksize=1000
+    )
     count += len(df_temp_new_cp)
 
-    del df_temp_new['centrale_produit_id']
-    df_cp = pd.read_sql_query(query_cp, connection, params={'sourceId': cent_id, 'countryId': country_id})
-    df_cp['code_produit'] = df_cp['code_produit'].dropna().astype(str)
-    df_cp['cirrina_pricing_condition_id'] = pd.to_numeric(df_cp['cirrina_pricing_condition_id'])
-    df_cp['supplier_id'] = pd.to_numeric(df_cp['supplier_id'])
-    df_temp_new = \
-        pd.merge(df_temp_new, df_cp, on=['code_produit', 'cirrina_pricing_condition_id', 'supplier_id'], how='left')
+    del df_temp_new["centrale_produit_id"]
+    df_cp = pd.read_sql_query(
+        query_cp, connection, params={"sourceId": cent_id, "countryId": country_id}
+    )
+    df_cp["code_produit"] = df_cp["code_produit"].dropna().astype(str)
+    df_cp["cirrina_pricing_condition_id"] = pd.to_numeric(
+        df_cp["cirrina_pricing_condition_id"]
+    )
+    df_cp["supplier_id"] = pd.to_numeric(df_cp["supplier_id"])
+    df_temp_new = pd.merge(
+        df_temp_new,
+        df_cp,
+        on=["code_produit", "cirrina_pricing_condition_id", "supplier_id"],
+        how="left",
+    )
     del df_cp
 
     if len(df_temp_new) > 0:
         # Insert into centrale_produit_denominations
-        df_temp_new_cpd = df_temp_new[['centrale_produit_id', 'nom']].copy()
-        df_temp_new_cpd['date_creation'] = date
+        df_temp_new_cpd = df_temp_new[["centrale_produit_id", "nom"]].copy()
+        df_temp_new_cpd["date_creation"] = date
         df_temp_new_cpd.drop_duplicates(inplace=True)
-        df_temp_new_cpd.to_sql('centrale_produit_denominations', engine, if_exists='append', index=False,
-                               chunksize=1000)
+        df_temp_new_cpd.to_sql(
+            "centrale_produit_denominations",
+            engine,
+            if_exists="append",
+            index=False,
+            chunksize=1000,
+        )
 
         del df_temp_new_cpd
 
@@ -376,121 +539,219 @@ def insert_central_codes(df, cent_id, cent_name):
 
 
 def insert_product_country(df):
-    query = text("""
+    query = text(
+        """
                     select distinct product_id from product_country
                     where country_id = :countryId
-                    """)
-    df_tmp = pd.read_sql_query(query, connection, params={'countryId': country_id})
+                    """
+    )
+    df_tmp = pd.read_sql_query(query, connection, params={"countryId": country_id})
     # Formatting columns
-    df_tmp['product_id'] = pd.to_numeric(df_tmp['product_id'])
+    df_tmp["product_id"] = pd.to_numeric(df_tmp["product_id"])
 
-    df_products = df[~df['produit_id'].isin(df_tmp['product_id'])].copy()
+    df_products = df[~df["produit_id"].isin(df_tmp["product_id"])].copy()
     if len(df_products) > 0:
-        df_products = df_products[['produit_id']]
-        df_products.rename(columns={'produit_id': 'product_id'}, inplace=True)
-        df_products['country_id'] = country_id
+        df_products = df_products[["produit_id"]]
+        df_products.rename(columns={"produit_id": "product_id"}, inplace=True)
+        df_products["country_id"] = country_id
         df_products.drop_duplicates(inplace=True)
-        df_products.to_sql('product_country', engine, if_exists='append', index=False, chunksize=1000)
+        df_products.to_sql(
+            "product_country", engine, if_exists="append", index=False, chunksize=1000
+        )
 
     del df_products, df_tmp
 
 
 def insert_product_country_label(df, is_france):
-    query = text("""
+    query = text(
+        """
                         select distinct l.code as label_code, language_id
                         from label l
                         join country c on c.default_language_id = l.language_id
                         where l.code like 'PROD%'
-                """)
-    df_tmp = pd.read_sql_query(query, connection, params={'countryId': country_id})
+                """
+    )
+    df_tmp = pd.read_sql_query(query, connection, params={"countryId": country_id})
 
     df_products_labels = df.copy()
     if len(df_products_labels) > 0:
-        query_language = text("""select default_language_id from country where id = :countryId""")
-        language_id = connection.execute(query_language, countryId=country_id).first()[0]
+        query_language = text(
+            """select default_language_id from country where id = :countryId"""
+        )
+        language_id = connection.execute(query_language, countryId=country_id).first()[
+            0
+        ]
 
         if is_france:
-            product_name = 'Dénomination'
-            product_packaging = 'Conditionnement'
-            df_products_labels.loc[df_products_labels[product_packaging].isnull(), product_packaging] = ''
+            product_name = "Dénomination"
+            product_packaging = "Conditionnement"
+            df_products_labels.loc[
+                df_products_labels[product_packaging].isnull(), product_packaging
+            ] = ""
         else:
-            product_name = 'nom'
-            product_packaging = 'product_packaging'
-            df_products_labels[product_packaging] = ''
+            product_name = "nom"
+            product_packaging = "product_packaging"
+            df_products_labels[product_packaging] = ""
 
-        df_products_labels['name_label'] = df_products_labels.agg(lambda x: f"PROD{str(int(x['produit_id']))}N", axis=1)
-        df_products_labels['packaging_label'] = df_products_labels.agg(lambda x: f"PROD{str(int(x['produit_id']))}P",
-                                                                       axis=1)
-        df_products_labels['language_id'] = language_id
+        df_products_labels["name_label"] = df_products_labels.agg(
+            lambda x: f"PROD{str(int(x['produit_id']))}N", axis=1
+        )
+        df_products_labels["packaging_label"] = df_products_labels.agg(
+            lambda x: f"PROD{str(int(x['produit_id']))}P", axis=1
+        )
+        df_products_labels["language_id"] = language_id
 
         # Label of name of product
-        df_products_labels_name = df_products_labels[~df_products_labels['name_label'].isin(df_tmp['label_code']) &
-                                                     df_products_labels[product_name].notnull()]
+        df_products_labels_name = df_products_labels[
+            ~df_products_labels["name_label"].isin(df_tmp["label_code"])
+            & df_products_labels[product_name].notnull()
+        ]
 
         if len(df_products_labels_name) > 0:
-            df_products_labels_name = df_products_labels_name[['name_label', product_name, 'language_id']]
-            df_products_labels_name.drop_duplicates(subset='name_label', keep='first', inplace=True)
-            df_products_labels_name.rename(columns={'name_label': 'code', product_name: 'value'}, inplace=True)
+            df_products_labels_name = df_products_labels_name[
+                ["name_label", product_name, "language_id"]
+            ]
+            df_products_labels_name.drop_duplicates(
+                subset="name_label", keep="first", inplace=True
+            )
+            df_products_labels_name.rename(
+                columns={"name_label": "code", product_name: "value"}, inplace=True
+            )
             df_products_labels_name.drop_duplicates(inplace=True)
-            df_products_labels_name.to_sql('label', engine, if_exists='append', index=False, chunksize=1000)
+            df_products_labels_name.to_sql(
+                "label", engine, if_exists="append", index=False, chunksize=1000
+            )
 
         # Label of packaging of product
-        df_products_labels_pack = df_products_labels[~df_products_labels['packaging_label'].isin(
-            df_tmp['label_code']) & df_products_labels[product_packaging].notnull()]
+        df_products_labels_pack = df_products_labels[
+            ~df_products_labels["packaging_label"].isin(df_tmp["label_code"])
+            & df_products_labels[product_packaging].notnull()
+        ]
 
         if len(df_products_labels_pack) > 0:
-            df_products_labels_pack = df_products_labels_pack[['packaging_label', product_packaging, 'language_id']]
-            df_products_labels_pack.drop_duplicates(subset='packaging_label', keep='first', inplace=True)
-            df_products_labels_pack.rename(columns={'packaging_label': 'code', product_packaging: 'value'}, inplace=True)
+            df_products_labels_pack = df_products_labels_pack[
+                ["packaging_label", product_packaging, "language_id"]
+            ]
+            df_products_labels_pack.drop_duplicates(
+                subset="packaging_label", keep="first", inplace=True
+            )
+            df_products_labels_pack.rename(
+                columns={"packaging_label": "code", product_packaging: "value"},
+                inplace=True,
+            )
             df_products_labels_pack.drop_duplicates(inplace=True)
-            df_products_labels_pack.to_sql('label', engine, if_exists='append', index=False, chunksize=1000)
+            df_products_labels_pack.to_sql(
+                "label", engine, if_exists="append", index=False, chunksize=1000
+            )
 
     del df_products_labels, df_tmp
 
 
 def process():
     df = df_init.where(df_init.notnull(), None)
-    df['Obsolète'] = df['Obsolète'] == 'True'
-    df['Invisible'] = df['Invisible'] == 'True'
-    df['Id'] = pd.to_numeric(df['Id'])
-    df['Laboratoire'] = pd.to_numeric(df['Laboratoire'])
-    df['Code GTIN'] = df['Code GTIN'].dropna().apply(lambda x: str(int(x)) if type(x) is float else str(x))
-    df['Autre code GTIN'] = df['Autre code GTIN'].dropna().apply(lambda x: str(int(x)) if type(x) is float else str(x))
-    df['Dénomination'] = df['Dénomination'].dropna().astype(str)
-    df['Conditionnement'] = df['Conditionnement'].dropna().astype(str)
-    df['ID classe thérapeutique'] = pd.to_numeric(df['ID classe thérapeutique'])
+    df["Obsolète"] = df["Obsolète"] == "True"
+    df["Invisible"] = df["Invisible"] == "True"
+    df["Id"] = pd.to_numeric(df["Id"])
+    df["Laboratoire"] = pd.to_numeric(df["Laboratoire"])
+    df["Code GTIN"] = (
+        df["Code GTIN"]
+        .dropna()
+        .apply(lambda x: str(int(x)) if type(x) is float else str(x))
+    )
+    df["Autre code GTIN"] = (
+        df["Autre code GTIN"]
+        .dropna()
+        .apply(lambda x: str(int(x)) if type(x) is float else str(x))
+    )
+    df["Dénomination"] = df["Dénomination"].dropna().astype(str)
+    df["Conditionnement"] = df["Conditionnement"].dropna().astype(str)
+    df["Value packaging"] = pd.to_numeric(df["Value packaging"])
+    df["Type packaging"] = pd.to_numeric(df["Type packaging"])
+    df["ID classe thérapeutique"] = pd.to_numeric(df["ID classe thérapeutique"])
 
     # Insert new products
     df = insert_new_product(df)
-    df.drop(columns=['code_gtin', 'code_gtin_autre', 'famille_therapeutique_id', 'denomination', 'conditionnement',
-                     'laboratoire_id', 'obsolete', 'invisible'], inplace=True)
+    df.drop(
+        columns=[
+            "code_gtin",
+            "code_gtin_autre",
+            "famille_therapeutique_id",
+            "denomination",
+            "conditionnement",
+            "value_packaging",
+            "type_packaging",
+            "laboratoire_id",
+            "obsolete",
+            "invisible",
+        ],
+        inplace=True,
+    )
 
     # Add products IDs
-    query_products = text("""
-                SELECT id as produit_id, denomination, conditionnement, laboratoire_id, obsolete, invisible, code_gtin, 
+    query_products = text(
+        """
+                SELECT id as produit_id, denomination, conditionnement, value_packaging, type_packaging, laboratoire_id, obsolete, invisible, code_gtin,
                     code_gtin_autre, famille_therapeutique_id
-                FROM produits""")
+                FROM produits"""
+    )
     df_products = pd.read_sql_query(query_products, connection)
-    df_products['produit_id'] = pd.to_numeric(df_products['produit_id'])
-    df_products['laboratoire_id'] = pd.to_numeric(df_products['laboratoire_id'])
+    df_products["produit_id"] = pd.to_numeric(df_products["produit_id"])
+    df_products["laboratoire_id"] = pd.to_numeric(df_products["laboratoire_id"])
 
-    temp = pd.merge(df[df['Id'].isnull()], df_products,
-                    left_on=['Code GTIN', 'Autre code GTIN', 'ID classe thérapeutique', 'Dénomination',
-                             'Conditionnement', 'Laboratoire', 'Obsolète', 'Invisible'],
-                    right_on=['code_gtin', 'code_gtin_autre', 'famille_therapeutique_id', 'denomination',
-                              'conditionnement', 'laboratoire_id', 'obsolete', 'invisible'], how='left')
+    temp = pd.merge(
+        df[df["Id"].isnull()],
+        df_products,
+        left_on=[
+            "Code GTIN",
+            "Autre code GTIN",
+            "ID classe thérapeutique",
+            "Dénomination",
+            "Conditionnement",
+            "Value packaging",
+            "Type packaging",
+            "Laboratoire",
+            "Obsolète",
+            "Invisible",
+        ],
+        right_on=[
+            "code_gtin",
+            "code_gtin_autre",
+            "famille_therapeutique_id",
+            "denomination",
+            "conditionnement",
+            "value_packaging",
+            "type_packaging",
+            "laboratoire_id",
+            "obsolete",
+            "invisible",
+        ],
+        how="left",
+    )
 
-    temp_not_null = df[df['Id'].notnull()].copy()
-    df = pd.concat([temp, pd.merge(temp_not_null, df_products[['produit_id', 'laboratoire_id']],
-                                   left_on=['Id'],
-                                   right_on=['produit_id'], how='left')], axis=0, sort=False, ignore_index=True)
+    temp_not_null = df[df["Id"].notnull()].copy()
+    df = pd.concat(
+        [
+            temp,
+            pd.merge(
+                temp_not_null,
+                df_products[["produit_id", "laboratoire_id"]],
+                left_on=["Id"],
+                right_on=["produit_id"],
+                how="left",
+            ),
+        ],
+        axis=0,
+        sort=False,
+        ignore_index=True,
+    )
     del temp_not_null, temp
 
     # Add Vetapro codes
     if country_id == 1:
-        df.loc[df['Id'].isnull(), 'Code_Vetapro'] = df['produit_id']
-        df.loc[df['Id'].isnull(), 'Dénomination_Vetapro'] = df[['Dénomination', 'Conditionnement']].apply(
-            lambda x: ' '.join(x.dropna()), axis=1)
+        df.loc[df["Id"].isnull(), "Code_Vetapro"] = df["produit_id"]
+        df.loc[df["Id"].isnull(), "Dénomination_Vetapro"] = df[
+            ["Dénomination", "Conditionnement"]
+        ].apply(lambda x: " ".join(x.dropna()), axis=1)
 
     # Add country ID for products
     insert_product_country(df)
@@ -500,11 +761,15 @@ def process():
 
     # Remove .0 from codes columns (not for Cirrina, Serviphar and Distrivet)
     for col in df.columns:
-        if 'Code_' in col:
-            if col in ['Code_Cirrina', 'Code_Serviphar', 'Code_Distrivet']:
+        if "Code_" in col:
+            if col in ["Code_Cirrina", "Code_Serviphar", "Code_Distrivet"]:
                 df[col] = df[col].dropna().astype(str)
             else:
-                df[col] = df[col].dropna().apply(lambda x: str(int(x)) if type(x) is float else x)
+                df[col] = (
+                    df[col]
+                    .dropna()
+                    .apply(lambda x: str(int(x)) if type(x) is float else x)
+                )
 
     # Insert types of new products
     insert_types(df)
@@ -517,11 +782,10 @@ def process():
 
     # insert codes for each central
     centrals = pd.read_sql_query(
-        "select id, code as nom from centrales where obsolete is false",
-        connection
+        "select id, code as nom from centrales where obsolete is false", connection
     )
     for index, row in centrals.iterrows():
-        insert_central_codes(df, row['id'], row['nom'].capitalize())
+        insert_central_codes(df, row["id"], row["nom"].capitalize())
 
 
 def create_excel_file(filename, df, append):
@@ -542,23 +806,23 @@ if __name__ == "__main__":
         params = config(section="postgresql")
 
         # Connecting to the PostgreSQL server
-        print('Connecting to the PostgreSQL database...')
+        print("Connecting to the PostgreSQL database...")
         engine = create_engine(URL(**params), echo=False)
         connection = engine.connect()
 
-        print('** Processing new products **')
+        print("** Processing new products **")
 
         # Getting args
         args = getArguments()
         country_id = int(args.country)
         country_name = common.get_name_of_country(connection, country_id)
 
-        now = datetime.now().strftime('%Y%m%d')
+        now = datetime.now().strftime("%Y%m%d")
 
-        initDir = os.path.join('fichiers', 'nouveaux', country_name)
-        workDir = os.path.join('encours', 'nouveaux', country_name)
-        historicDir = os.path.join('historiques', 'nouveaux', country_name, now)
-        logDir = os.path.join('logs', 'nouveaux', country_name, now)
+        initDir = os.path.join("fichiers", "nouveaux", country_name)
+        workDir = os.path.join("encours", "nouveaux", country_name)
+        historicDir = os.path.join("historiques", "nouveaux", country_name, now)
+        logDir = os.path.join("logs", "nouveaux", country_name, now)
 
         # Create directories if not exist
         os.makedirs(workDir, exist_ok=True)
@@ -568,7 +832,7 @@ if __name__ == "__main__":
         df_logs = pd.DataFrame()
         errors_file = os.path.join(logDir, "products_errors.xlsx")
 
-        for f in glob.glob(os.path.join(initDir, '*.[xX][lL][sS][xX]')):
+        for f in glob.glob(os.path.join(initDir, "*.[xX][lL][sS][xX]")):
             print(f'Processing file "{os.path.basename(f)}" ...')
 
             # Begin transaction
@@ -582,15 +846,36 @@ if __name__ == "__main__":
             count_of_types = 0
             count_of_species = 0
             count_of_upd_products = 0
-            count_of_centrals_codes = {"Alcyon": 0, "Centravet": 0, "Coveto": 0, "Alibon": 0, "Vetapro": 0,
-                                       "Vetys pharma": 0, "Hippocampe": 0, "Agripharm": 0, "Elvetis": 0, "Longimpex": 0,
-                                       "Direct": 0, "Cedivet": 0, "Covetrus": 0, "Apoex": 0, "Kruuse": 0,
-                                       "Apotek1": 0, "Cirrina": 0, "Serviphar": 0, "Soleomed": 0, "Veso": 0,
-                                       "Distrivet": 0, "Elasa": 0, "Centauro": 0
-                                       }
+            count_of_centrals_codes = {
+                "Alcyon": 0,
+                "Centravet": 0,
+                "Coveto": 0,
+                "Alibon": 0,
+                "Vetapro": 0,
+                "Vetys pharma": 0,
+                "Hippocampe": 0,
+                "Agripharm": 0,
+                "Elvetis": 0,
+                "Longimpex": 0,
+                "Direct": 0,
+                "Cedivet": 0,
+                "Covetrus": 0,
+                "Apoex": 0,
+                "Kruuse": 0,
+                "Apotek1": 0,
+                "Cirrina": 0,
+                "Serviphar": 0,
+                "Soleomed": 0,
+                "Veso": 0,
+                "Distrivet": 0,
+                "Elasa": 0,
+                "Centauro": 0,
+            }
             if os.stat(os.path.join(workDir, os.path.basename(f))).st_size > 0:
                 # Read Excel file
-                df_init = pd.read_excel(os.path.join(workDir, os.path.basename(f)), dtype=str)
+                df_init = pd.read_excel(
+                    os.path.join(workDir, os.path.basename(f)), dtype=str
+                )
                 # Check file
                 check_dataframe(df_init, connection)
                 # Process file
@@ -599,25 +884,32 @@ if __name__ == "__main__":
                 print(f'File "{os.path.basename(f)}" is empty !')
 
             # Move source file
-            shutil.move(os.path.join(workDir, os.path.basename(f)),
-                        os.path.join(historicDir, os.path.basename(f)))
+            shutil.move(
+                os.path.join(workDir, os.path.basename(f)),
+                os.path.join(historicDir, os.path.basename(f)),
+            )
 
             trans.commit()
             print(f'File "{os.path.basename(f)}" is treated :')
-            print(f'\t{count_of_new_products} products created')
-            print(f'\t{count_of_types} types created')
-            print(f'\t{count_of_species} species created')
-            print(f'\t{count_of_upd_products} products updated')
+            print(f"\t{count_of_new_products} products created")
+            print(f"\t{count_of_types} types created")
+            print(f"\t{count_of_species} species created")
+            print(f"\t{count_of_upd_products} products updated")
             for cent in count_of_centrals_codes:
-                print(f'\t{count_of_centrals_codes[cent]} codes created or updated for {cent}')
+                print(
+                    f"\t{count_of_centrals_codes[cent]} codes created or updated for {cent}"
+                )
 
         # Create Excel file of products errors
         if len(df_logs) > 0:
             os.makedirs(logDir, exist_ok=True)
-            df_logs.columns = ['Fichier', 'ID Produit', 'Type', 'Description']
-            create_excel_file(os.path.join(logDir, "products_errors.xlsx"),
-                              df_logs.drop_duplicates(), append=False)
-            print('WARNING : there are an error file !')
+            df_logs.columns = ["Fichier", "ID Produit", "Type", "Description"]
+            create_excel_file(
+                os.path.join(logDir, "products_errors.xlsx"),
+                df_logs.drop_duplicates(),
+                append=False,
+            )
+            print("WARNING : there are an error file !")
 
     except (Exception, psycopg2.Error) as error:
         if connection:
